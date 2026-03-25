@@ -9,11 +9,13 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from tools.models import (
+    ContentDepth,
     EdgeType,
     KnowledgeEdge,
     KnowledgeGraph,
     KnowledgeNode,
     NodeStatus,
+    _now_iso,
 )
 
 mcp = FastMCP("mindmap-manager")
@@ -743,7 +745,6 @@ async def generate_node_doc(node_id: str, content: str) -> str:
     Returns:
         JSON with save status, doc path, and summary
     """
-    from tools.models import ContentDepth
 
     async with _graph_lock:
         g = _get_graph()
@@ -843,7 +844,6 @@ async def update_node_doc(node_id: str, content: str) -> str:
     Returns:
         JSON with update status
     """
-    from tools.models import ContentDepth
 
     async with _graph_lock:
         g = _get_graph()
