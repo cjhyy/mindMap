@@ -1,0 +1,4 @@
+name: "tool-mindmap-manager"
+transport: "inprocess"
+module: "tools.mindmap_manager_server"
+object: "mcp"

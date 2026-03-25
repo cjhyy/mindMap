@@ -1,0 +1,1 @@
+mem-deep-research @ file:../mem-deep-research

@@ -1,0 +1,4 @@
+name: "tool-mindmap-renderer"
+transport: "inprocess"
+module: "tools.mindmap_renderer_server"
+object: "mcp"

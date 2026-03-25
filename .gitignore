@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Data (keep .gitkeep)
+data/*.json
+data/*.html
+data/graphs/
+!data/.gitkeep
+
+# Generated files
+*.generated.html
+frontend_to_ai_agent_mindmap.html
+
+# Logs
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
