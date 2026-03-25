@@ -97,20 +97,6 @@ async def render_markdown(graph_id: str, max_depth: int = 4):
     return result
 
 
-@router.get("/{graph_id}/render/html")
-async def render_html(graph_id: str):
-    g = _load_graph(graph_id)
-    try:
-        from tools.mindmap_renderer_server import set_graph_path
-        set_graph_path(graph_service.get_graph_path(graph_id))
-        from tools.mindmap_renderer_server import render_html as _render
-        result = json.loads(await _render())
-    except Exception as e:
-        raise HTTPException(500, f"Render failed: {e}")
-    if "error" in result:
-        raise HTTPException(400, result["error"])
-    return result
-
 
 def _load_graph(graph_id: str):
     try:

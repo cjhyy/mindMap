@@ -10,7 +10,6 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).parent.resolve()
 FRAMEWORK_DIR = PROJECT_DIR.parent / "mem-deep-research"
 
-# Ensure framework and project are importable
 if FRAMEWORK_DIR.exists():
     sys.path.insert(0, str(FRAMEWORK_DIR))
 sys.path.insert(0, str(PROJECT_DIR))
@@ -28,18 +27,9 @@ if env_file.exists():
 
 async def main():
     parser = argparse.ArgumentParser(description="Knowledge MindMap Agent")
-    parser.add_argument("task", nargs="?", help="Research task description")
+    parser.add_argument("task", help="Research task description")
     parser.add_argument("--config", default="agent", help="Config name (default: agent)")
-    parser.add_argument("--interactive", "-i", action="store_true", help="Run in interactive mode")
     args = parser.parse_args()
-
-    if args.interactive:
-        from cli import interactive_loop
-        await interactive_loop()
-        return
-
-    if not args.task:
-        parser.error("Please provide a task or use --interactive mode")
 
     from mem_deep_research import DeepResearch
 

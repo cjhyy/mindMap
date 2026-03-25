@@ -15,13 +15,8 @@ env/
 
 # Data (keep .gitkeep)
 data/*.json
-data/*.html
 data/graphs/
 !data/.gitkeep
-
-# Generated files
-*.generated.html
-frontend_to_ai_agent_mindmap.html
 
 # Logs
 logs/
