@@ -2,19 +2,19 @@ main_agent:
   prompt:
     agent_type: main
     tool_format: xml
-    presets: [research, research_planning]
+    presets: []
     custom_system_template: mindmap_agent_system
 
   llm:
     provider_class: "ClaudeOpenRouterClient"
     model_name: "anthropic/claude-sonnet-4"
     async_client: true
-    temperature: 0.4
+    temperature: 0.3
     top_p: 0.95
     min_p: 0.0
     top_k: -1
-    max_tokens: 32000
-    timeout: 300
+    max_tokens: 16000
+    timeout: 1200
     retry_max_attempts: 3
     retry_strategy: "exponential"
     retry_multiplier: 2
@@ -24,22 +24,23 @@ main_agent:
     openrouter_provider: ""
     enable_streaming: true
     disable_cache_control: false
-    keep_tool_result: 8
+    keep_tool_result: 5
     oai_tool_thinking: false
 
   tool_config:
     - tool-mindmap-manager
-    - tool-mindmap-renderer
     - tool-searching-serper
 
-  max_turns: 25
-  max_tool_calls_per_turn: 8
-  keep_tool_result: 8
+  max_turns: 30
+  max_tool_calls_per_turn: 5
+  keep_tool_result: 5
 
   deep_research:
-    enabled: true
-    reflection_interval: 5
-    require_explicit_planning: true
+    enabled: false
+
+  monitoring:
+    stall_timeout: 600
+    max_total_timeout: 1800
 
   input_process:
     hint_generation: false

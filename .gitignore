@@ -16,6 +16,7 @@ env/
 # Data (keep .gitkeep)
 data/*.json
 data/graphs/
+data/docs/
 !data/.gitkeep
 
 # Logs
