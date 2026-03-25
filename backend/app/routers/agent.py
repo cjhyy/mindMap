@@ -64,6 +64,39 @@ async def agent_connect(graph_id: str):
     return _op_response(op)
 
 
+@router.post("/api/graphs/{graph_id}/agent/auto", response_model=OperationResponse)
+async def agent_auto(graph_id: str):
+    """Auto-continue: check graph state and do whatever is needed next.
+
+    The agent sees the key-map and decides autonomously:
+    - If empty → create skeleton
+    - If unexplored nodes → expand them
+    - If no docs on core nodes → generate docs
+    """
+    from app.services.graph_service import graph_service
+    g = graph_service.get_graph(graph_id)
+    if not g:
+        raise HTTPException(404, f"Graph '{graph_id}' not found")
+
+    if not g.nodes:
+        task = "知识图谱为空，请创建完整骨架"
+    else:
+        unexplored = sum(1 for n in g.nodes.values() if n.status.value == "unexplored")
+        no_doc = sum(1 for n in g.nodes.values()
+                     if n.status.value != "unexplored" and not n.has_doc and n.level >= 1)
+        parts = ["继续完善知识图谱"]
+        if unexplored > 0:
+            parts.append(f"展开 {unexplored} 个未探索节点")
+        if no_doc > 0:
+            parts.append(f"为 {no_doc} 个核心节点生成文档")
+        if unexplored == 0 and no_doc == 0:
+            parts = ["图谱已完善，检查是否有可以深化的知识点"]
+        task = "，".join(parts)
+
+    op = await agent_service.start_operation(graph_id, "auto", task)
+    return _op_response(op)
+
+
 # ── Operation management ────────────────────────────────────
 
 

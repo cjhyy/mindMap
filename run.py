@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Run a single research task with the Knowledge MindMap Agent."""
+"""Run the Knowledge MindMap Agent with auto-continue.
+
+If the graph still has unexplored nodes or missing docs after one run,
+automatically starts another round. Max rounds configurable via --rounds.
+"""
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -25,24 +30,98 @@ if env_file.exists():
                 os.environ.setdefault(key.strip(), value.strip())
 
 
+def check_graph_status() -> dict:
+    """Check current graph state to decide if another round is needed."""
+    graph_path = PROJECT_DIR / "data" / "knowledge_graph.json"
+    if not graph_path.exists():
+        return {"exists": False, "nodes": 0, "unexplored": 0, "no_doc": 0}
+
+    data = json.loads(graph_path.read_text(encoding="utf-8"))
+    nodes = data.get("nodes", {})
+    unexplored = sum(1 for n in nodes.values() if n.get("status") == "unexplored")
+    no_doc = sum(1 for n in nodes.values()
+                 if n.get("status") != "unexplored"  # only count explored/expanded nodes
+                 and not n.get("has_doc")
+                 and n.get("level", 0) >= 1)  # skip root
+    return {
+        "exists": True,
+        "nodes": len(nodes),
+        "unexplored": unexplored,
+        "no_doc": no_doc,
+    }
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Knowledge MindMap Agent")
     parser.add_argument("task", help="Research task description")
-    parser.add_argument("--config", default="agent", help="Config name (default: agent)")
+    parser.add_argument("--config", default="agent", help="Config name")
+    parser.add_argument("--rounds", type=int, default=3, help="Max auto-continue rounds (default: 3)")
     args = parser.parse_args()
 
     from mem_deep_research import DeepResearch
 
-    dr = DeepResearch.from_project(PROJECT_DIR, config_name=args.config)
+    total_turns = 0
+    total_tools = 0
+    total_duration = 0.0
 
-    try:
-        result = await dr.run(args.task)
-        print(f"\nStatus: {result.status}")
-        print(f"Duration: {result.duration_seconds:.1f}s")
-        print(f"Turns: {result.turns} | Tool calls: {result.tool_calls}")
-        print(f"\n{result.answer}")
-    finally:
-        await dr.close()
+    for round_num in range(1, args.rounds + 1):
+        # Decide task for this round
+        if round_num == 1:
+            task = args.task
+        else:
+            status = check_graph_status()
+            if status["unexplored"] == 0 and status["no_doc"] == 0:
+                print(f"\n✅ 图谱已完成：{status['nodes']} 节点，全部已探索且有文档")
+                break
+
+            task = "继续完善知识图谱"
+            if status["unexplored"] > 0:
+                task += f"，还有 {status['unexplored']} 个未探索节点需要展开"
+            if status["no_doc"] > 0:
+                task += f"，还有 {status['no_doc']} 个核心节点缺少文档"
+
+        print(f"\n{'='*60}")
+        print(f"  Round {round_num}/{args.rounds}: {task[:60]}...")
+        print(f"{'='*60}")
+
+        dr = DeepResearch.from_project(PROJECT_DIR, config_name=args.config)
+        try:
+            result = await dr.run(task)
+            total_turns += result.turns or 0
+            total_tools += result.tool_calls or 0
+            total_duration += result.duration_seconds or 0
+
+            print(f"\n[Round {round_num}] {result.status} | {result.duration_seconds:.0f}s | {result.turns} turns | {result.tool_calls} tools")
+
+            if result.error:
+                print(f"  Error: {result.error}")
+        finally:
+            await dr.close()
+
+        # Check if we should continue
+        status = check_graph_status()
+        remaining = status["unexplored"] + status["no_doc"]
+        print(f"  Graph: {status['nodes']} nodes | {status['unexplored']} unexplored | {status['no_doc']} need docs")
+
+        if remaining == 0:
+            print(f"\n✅ 图谱已完成")
+            break
+
+    # Final summary
+    print(f"\n{'='*60}")
+    print(f"  Total: {total_duration:.0f}s | {total_turns} turns | {total_tools} tool calls")
+    status = check_graph_status()
+    print(f"  Graph: {status['nodes']} nodes | {status['unexplored']} unexplored | {status['no_doc']} need docs")
+
+    # List generated docs
+    docs_dir = PROJECT_DIR / "data" / "docs"
+    if docs_dir.exists():
+        docs = list(docs_dir.glob("*.md"))
+        if docs:
+            print(f"  Documents: {len(docs)}")
+            for d in sorted(docs):
+                print(f"    📄 {d.stem} ({d.stat().st_size:,} bytes)")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

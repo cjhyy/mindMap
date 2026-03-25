@@ -31,7 +31,7 @@ main_agent:
     - tool-mindmap-manager
     - tool-searching-serper
 
-  max_turns: 30
+  max_turns: 50
   max_tool_calls_per_turn: 5
   keep_tool_result: 5
 
@@ -40,7 +40,7 @@ main_agent:
 
   monitoring:
     stall_timeout: 600
-    max_total_timeout: 1800
+    max_total_timeout: 3600
 
   input_process:
     hint_generation: false
