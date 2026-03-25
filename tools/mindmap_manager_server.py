@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -19,6 +20,7 @@ mcp = FastMCP("mindmap-manager")
 
 _graph: KnowledgeGraph | None = None
 _graph_path: Path = Path(__file__).parent.parent / "data" / "knowledge_graph.json"
+_graph_lock = asyncio.Lock()
 
 
 def set_graph_path(path: Path | str) -> None:
@@ -48,6 +50,12 @@ def _save() -> None:
     _get_graph().save(_graph_path)
 
 
+async def _locked_mutation(fn):
+    """Execute a graph mutation under lock to prevent concurrent corruption."""
+    async with _graph_lock:
+        return fn()
+
+
 def _ok(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False)
 
@@ -73,19 +81,20 @@ async def create_mindmap(name: str, description: str, root_label: str) -> str:
     Returns:
         JSON with root_node_id and graph name
     """
-    global _graph
-    _graph = KnowledgeGraph(name=name, description=description)
+    async with _graph_lock:
+        global _graph
+        _graph = KnowledgeGraph(name=name, description=description)
 
-    root = KnowledgeNode(
-        label=root_label,
-        description=description,
-        domain=root_label,
-        level=0,
-        status=NodeStatus.EXPLORED,
-    )
-    _graph.nodes[root.id] = root
-    _graph.root_node_id = root.id
-    _save()
+        root = KnowledgeNode(
+            label=root_label,
+            description=description,
+            domain=root_label,
+            level=0,
+            status=NodeStatus.EXPLORED,
+        )
+        _graph.nodes[root.id] = root
+        _graph.root_node_id = root.id
+        _save()
 
     return _ok({
         "status": "created",
@@ -118,31 +127,32 @@ async def add_node(
     Returns:
         JSON with the new node ID
     """
-    g = _get_graph()
-    if parent_id not in g.nodes:
-        return _err(f"Parent node '{parent_id}' not found")
+    async with _graph_lock:
+        g = _get_graph()
+        if parent_id not in g.nodes:
+            return _err(f"Parent node '{parent_id}' not found")
 
-    parent = g.nodes[parent_id]
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        parent = g.nodes[parent_id]
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
-    node = KnowledgeNode(
-        label=label,
-        description=description,
-        domain=domain or parent.domain,
-        level=parent.level + 1,
-        tags=tag_list,
-        parent_id=parent_id,
-    )
-    g.nodes[node.id] = node
+        node = KnowledgeNode(
+            label=label,
+            description=description,
+            domain=domain or parent.domain,
+            level=parent.level + 1,
+            tags=tag_list,
+            parent_id=parent_id,
+        )
+        g.nodes[node.id] = node
 
-    edge = KnowledgeEdge(
-        source_id=parent_id,
-        target_id=node.id,
-        edge_type=EdgeType.PARENT_CHILD,
-        label="contains",
-    )
-    g.edges[edge.id] = edge
-    _save()
+        edge = KnowledgeEdge(
+            source_id=parent_id,
+            target_id=node.id,
+            edge_type=EdgeType.PARENT_CHILD,
+            label="contains",
+        )
+        g.edges[edge.id] = edge
+        _save()
 
     return _ok({"status": "added", "node_id": node.id, "label": label, "parent_id": parent_id})
 
@@ -169,46 +179,47 @@ async def add_nodes_batch(nodes_json: str) -> str:
     if not isinstance(nodes_data, list):
         return _err("nodes_json must be a JSON array")
 
-    g = _get_graph()
-    created = []
+    async with _graph_lock:
+        g = _get_graph()
+        created = []
 
-    for item in nodes_data:
-        label = item.get("label", "")
-        description = item.get("description", "")
-        parent_id = item.get("parent_id", "")
+        for item in nodes_data:
+            label = item.get("label", "")
+            description = item.get("description", "")
+            parent_id = item.get("parent_id", "")
 
-        if not label or not parent_id:
-            created.append({"error": f"Missing label or parent_id for item: {item}"})
-            continue
+            if not label or not parent_id:
+                created.append({"error": f"Missing label or parent_id for item: {item}"})
+                continue
 
-        if parent_id not in g.nodes:
-            created.append({"error": f"Parent '{parent_id}' not found for '{label}'"})
-            continue
+            if parent_id not in g.nodes:
+                created.append({"error": f"Parent '{parent_id}' not found for '{label}'"})
+                continue
 
-        parent = g.nodes[parent_id]
-        tags_raw = item.get("tags", "")
-        tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
+            parent = g.nodes[parent_id]
+            tags_raw = item.get("tags", "")
+            tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else []
 
-        node = KnowledgeNode(
-            label=label,
-            description=description,
-            domain=item.get("domain", "") or parent.domain,
-            level=parent.level + 1,
-            tags=tag_list,
-            parent_id=parent_id,
-        )
-        g.nodes[node.id] = node
+            node = KnowledgeNode(
+                label=label,
+                description=description,
+                domain=item.get("domain", "") or parent.domain,
+                level=parent.level + 1,
+                tags=tag_list,
+                parent_id=parent_id,
+            )
+            g.nodes[node.id] = node
 
-        edge = KnowledgeEdge(
-            source_id=parent_id,
-            target_id=node.id,
-            edge_type=EdgeType.PARENT_CHILD,
-            label="contains",
-        )
-        g.edges[edge.id] = edge
-        created.append({"node_id": node.id, "label": label})
+            edge = KnowledgeEdge(
+                source_id=parent_id,
+                target_id=node.id,
+                edge_type=EdgeType.PARENT_CHILD,
+                label="contains",
+            )
+            g.edges[edge.id] = edge
+            created.append({"node_id": node.id, "label": label})
 
-    _save()
+        _save()
     return _ok({"status": "batch_added", "count": len(created), "nodes": created})
 
 
@@ -233,23 +244,25 @@ async def update_node(
     Returns:
         Success or error message
     """
-    g = _get_graph()
-    node = g.nodes.get(node_id)
-    if not node:
-        return _err(f"Node '{node_id}' not found")
+    async with _graph_lock:
+        g = _get_graph()
+        node = g.nodes.get(node_id)
+        if not node:
+            return _err(f"Node '{node_id}' not found")
 
-    if description:
-        node.description = description
-    if status:
-        try:
-            node.status = NodeStatus(status)
-        except ValueError:
-            return _err(f"Invalid status: '{status}'. Use unexplored/explored/expanded")
-    if tags:
-        node.tags = [t.strip() for t in tags.split(",") if t.strip()]
+        if description:
+            node.description = description
+        if status:
+            try:
+                node.status = NodeStatus(status)
+            except ValueError:
+                return _err(f"Invalid status: '{status}'. Use unexplored/explored/expanded")
+        if tags:
+            node.tags = [t.strip() for t in tags.split(",") if t.strip()]
 
-    node.updated_at = __import__("datetime").datetime.now().isoformat()
-    _save()
+        from datetime import datetime
+        node.updated_at = datetime.now().isoformat()
+        _save()
     return _ok({"status": "updated", "node_id": node_id, "label": node.label})
 
 
@@ -276,40 +289,41 @@ async def add_edge(
     Returns:
         JSON with edge ID
     """
-    g = _get_graph()
-    if source_id not in g.nodes:
-        return _err(f"Source node '{source_id}' not found")
-    if target_id not in g.nodes:
-        return _err(f"Target node '{target_id}' not found")
+    async with _graph_lock:
+        g = _get_graph()
+        if source_id not in g.nodes:
+            return _err(f"Source node '{source_id}' not found")
+        if target_id not in g.nodes:
+            return _err(f"Target node '{target_id}' not found")
 
-    # Check for duplicate edge
-    for e in g.edges.values():
-        if (
-            (e.source_id == source_id and e.target_id == target_id)
-            or (e.source_id == target_id and e.target_id == source_id)
-        ) and e.edge_type != EdgeType.PARENT_CHILD:
-            return _ok({
-                "status": "already_exists",
-                "edge_id": e.id,
-                "message": f"Edge already exists between these nodes",
-            })
+        # Check for duplicate edge
+        for e in g.edges.values():
+            if (
+                (e.source_id == source_id and e.target_id == target_id)
+                or (e.source_id == target_id and e.target_id == source_id)
+            ) and e.edge_type != EdgeType.PARENT_CHILD:
+                return _ok({
+                    "status": "already_exists",
+                    "edge_id": e.id,
+                    "message": "Edge already exists between these nodes",
+                })
 
-    try:
-        et = EdgeType(edge_type)
-    except ValueError:
-        return _err(f"Invalid edge_type: '{edge_type}'. Use cross_domain/prerequisite/related")
+        try:
+            et = EdgeType(edge_type)
+        except ValueError:
+            return _err(f"Invalid edge_type: '{edge_type}'. Use cross_domain/prerequisite/related")
 
-    edge = KnowledgeEdge(
-        source_id=source_id,
-        target_id=target_id,
-        edge_type=et,
-        label=label,
-    )
-    g.edges[edge.id] = edge
-    _save()
+        edge = KnowledgeEdge(
+            source_id=source_id,
+            target_id=target_id,
+            edge_type=et,
+            label=label,
+        )
+        g.edges[edge.id] = edge
+        _save()
 
-    src_label = g.nodes[source_id].label
-    tgt_label = g.nodes[target_id].label
+        src_label = g.nodes[source_id].label
+        tgt_label = g.nodes[target_id].label
     return _ok({
         "status": "edge_added",
         "edge_id": edge.id,
@@ -324,9 +338,7 @@ async def add_edge(
 
 @mcp.tool()
 async def delete_node(node_id: str) -> str:
-    """Delete a node and all its connected edges.
-
-    Children of the deleted node will be orphaned (their parent_id cleared).
+    """Delete a node and reparent its children to the deleted node's parent.
 
     Args:
         node_id: ID of the node to delete
@@ -334,30 +346,43 @@ async def delete_node(node_id: str) -> str:
     Returns:
         Success or error message
     """
-    g = _get_graph()
-    if node_id not in g.nodes:
-        return _err(f"Node '{node_id}' not found")
+    async with _graph_lock:
+        g = _get_graph()
+        if node_id not in g.nodes:
+            return _err(f"Node '{node_id}' not found")
 
-    if node_id == g.root_node_id:
-        return _err("Cannot delete the root node")
+        if node_id == g.root_node_id:
+            return _err("Cannot delete the root node")
 
-    label = g.nodes[node_id].label
+        deleted_node = g.nodes[node_id]
+        label = deleted_node.label
+        grandparent_id = deleted_node.parent_id
 
-    # Clear parent_id on children
-    for child in g.get_children(node_id):
-        child.parent_id = None
+        # Reparent children to the deleted node's parent
+        for child in g.get_children(node_id):
+            child.parent_id = grandparent_id
+            child.level = max(0, child.level - 1)
+            # Create new parent-child edge to grandparent
+            if grandparent_id:
+                new_edge = KnowledgeEdge(
+                    source_id=grandparent_id,
+                    target_id=child.id,
+                    edge_type=EdgeType.PARENT_CHILD,
+                    label="contains",
+                )
+                g.edges[new_edge.id] = new_edge
 
-    # Remove connected edges
-    edges_to_remove = [
-        eid
-        for eid, e in g.edges.items()
-        if e.source_id == node_id or e.target_id == node_id
-    ]
-    for eid in edges_to_remove:
-        del g.edges[eid]
+        # Remove all edges connected to the deleted node
+        edges_to_remove = [
+            eid
+            for eid, e in g.edges.items()
+            if e.source_id == node_id or e.target_id == node_id
+        ]
+        for eid in edges_to_remove:
+            del g.edges[eid]
 
-    del g.nodes[node_id]
-    _save()
+        del g.nodes[node_id]
+        _save()
 
     return _ok({"status": "deleted", "label": label, "edges_removed": len(edges_to_remove)})
 
@@ -416,6 +441,7 @@ async def get_subtree(node_id: str, max_depth: int = 2) -> str:
     Returns:
         JSON tree structure with nested children
     """
+    max_depth = max(0, min(max_depth, 20))
     g = _get_graph()
     if node_id not in g.nodes:
         return _err(f"Node '{node_id}' not found")

@@ -20,6 +20,13 @@ def set_graph_path(path: Path | str) -> None:
     _graph_path = Path(path)
 
 
+_MAX_DEPTH = 20
+
+
+def _clamp_depth(d: int) -> int:
+    return max(0, min(d, _MAX_DEPTH))
+
+
 def _load_graph() -> KnowledgeGraph | None:
     if _graph_path.exists():
         return KnowledgeGraph.load(_graph_path)
@@ -39,6 +46,17 @@ def _sanitize_mermaid(text: str) -> str:
     return text.replace('"', "'").replace("(", "（").replace(")", "）")
 
 
+def _escape_html(text: str) -> str:
+    """Escape HTML special characters to prevent XSS."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#x27;")
+    )
+
+
 # ── Tool: render_mermaid ────────────────────────────────────────
 
 
@@ -55,6 +73,7 @@ async def render_mermaid(node_id: str = "", max_depth: int = 3) -> str:
     Returns:
         Mermaid mindmap syntax string
     """
+    max_depth = _clamp_depth(max_depth)
     g = _load_graph()
     if not g or not g.nodes:
         return _err("No knowledge graph exists yet")
@@ -172,6 +191,7 @@ async def render_markdown_outline(node_id: str = "", max_depth: int = 4) -> str:
     Returns:
         Markdown formatted outline
     """
+    max_depth = _clamp_depth(max_depth)
     g = _load_graph()
     if not g or not g.nodes:
         return _err("No knowledge graph exists yet")
@@ -277,8 +297,8 @@ async def render_html(node_id: str = "", output_path: str = "") -> str:
         status_emoji = {"expanded": " ✓", "explored": "", "unexplored": " ?"}.get(node.status.value, "")
         vis_nodes.append({
             "id": nid,
-            "label": node.label + status_emoji,
-            "title": f"<b>{node.label}</b><br>{node.description}<br>Domain: {node.domain}<br>Status: {node.status.value}",
+            "label": _escape_html(node.label) + status_emoji,
+            "title": f"<b>{_escape_html(node.label)}</b><br>{_escape_html(node.description)}<br>Domain: {_escape_html(node.domain)}<br>Status: {node.status.value}",
             "color": color,
             "size": size,
             "shape": shape,

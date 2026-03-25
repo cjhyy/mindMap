@@ -103,7 +103,8 @@ async def stream_operation(op_id: str):
         raise HTTPException(404, f"Operation '{op_id}' not found")
 
     async def event_generator():
-        while True:
+        sent_done = False
+        while not sent_done:
             try:
                 msg = await asyncio.wait_for(op.stream_queue.get(), timeout=2.0)
 
@@ -118,21 +119,21 @@ async def stream_operation(op_id: str):
 
                 # End stream on terminal events
                 if event_type in ("done", "cancelled"):
-                    break
+                    sent_done = True
 
             except asyncio.TimeoutError:
-                # Heartbeat to keep connection alive
                 yield f"event: heartbeat\ndata: {{}}\n\n"
 
-                # If operation is already finished, send final event and stop
-                if op.status in ("completed", "cancelled", "failed"):
+                # If operation finished but "done" event was missed, send it now
+                if op.status in ("completed", "cancelled", "failed") and op.duration_seconds is not None:
                     final = json.dumps({
                         "status": op.status,
+                        "duration": op.duration_seconds,
                         "result": op.result[:500] if op.result else None,
                         "error": op.error,
                     }, ensure_ascii=False)
                     yield f"event: done\ndata: {final}\n\n"
-                    break
+                    sent_done = True
 
             except Exception:
                 break

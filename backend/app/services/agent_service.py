@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -12,6 +13,9 @@ from app.config import PROJECT_DIR
 from app.services.graph_service import graph_service
 
 logger = logging.getLogger(__name__)
+
+# Max completed operations to keep in memory
+_MAX_FINISHED_OPS = 100
 
 
 @dataclass
@@ -23,14 +27,27 @@ class AgentOperation:
     operation_type: str = ""  # create, expand, query, connect
     task: str = ""
     status: str = "pending"  # pending, running, completed, cancelled, failed
-    cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
-    stream_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     result: str | None = None
     error: str | None = None
     duration_seconds: float | None = None
     turns: int | None = None
     tool_calls: int | None = None
+    _cancel_event: asyncio.Event | None = field(default=None, repr=False)
+    _stream_queue: asyncio.Queue | None = field(default=None, repr=False)
     _task_handle: asyncio.Task | None = field(default=None, repr=False)
+    _finished_at: float | None = field(default=None, repr=False)
+
+    def __post_init__(self):
+        self._cancel_event = asyncio.Event()
+        self._stream_queue = asyncio.Queue()
+
+    @property
+    def cancel_event(self) -> asyncio.Event:
+        return self._cancel_event
+
+    @property
+    def stream_queue(self) -> asyncio.Queue:
+        return self._stream_queue
 
 
 class AgentCancelled(Exception):
@@ -47,6 +64,10 @@ class AgentService:
     async def start_operation(
         self, graph_id: str, operation_type: str, task: str,
     ) -> AgentOperation:
+        # Validate graph_id format (prevent path traversal)
+        if not re.match(r'^[a-f0-9]{8}$', graph_id):
+            raise ValueError(f"Invalid graph_id format: '{graph_id}'")
+
         # Verify graph exists
         if graph_service.get_graph(graph_id) is None:
             raise ValueError(f"Graph '{graph_id}' not found")
@@ -57,6 +78,9 @@ class AgentService:
             task=task,
         )
         self.operations[op.id] = op
+
+        # Cleanup old finished operations
+        self._cleanup_finished()
 
         # Run agent in background
         op._task_handle = asyncio.create_task(self._run_agent(op))
@@ -95,12 +119,29 @@ class AgentService:
         ops.sort(key=lambda o: o.id, reverse=True)
         return ops
 
+    def _cleanup_finished(self) -> None:
+        """Remove oldest finished operations if over the limit."""
+        finished = [
+            (op_id, op._finished_at or 0)
+            for op_id, op in self.operations.items()
+            if op.status in ("completed", "cancelled", "failed") and op._finished_at
+        ]
+        if len(finished) <= _MAX_FINISHED_OPS:
+            return
+
+        # Sort by finish time, remove oldest
+        finished.sort(key=lambda x: x[1])
+        to_remove = len(finished) - _MAX_FINISHED_OPS
+        for op_id, _ in finished[:to_remove]:
+            del self.operations[op_id]
+
     async def _run_agent(self, op: AgentOperation) -> None:
         import sys
         sys.path.insert(0, str(PROJECT_DIR))
 
         op.status = "running"
         start_time = time.time()
+        registered_hooks: list[tuple[str, object]] = []
 
         await op.stream_queue.put({
             "type": "started",
@@ -119,19 +160,14 @@ class AgentService:
             rdr_set_path(graph_path)
             reset_graph()
 
-            # Register cancellation hook
+            # Register hooks (track them for cleanup)
             from mem_deep_research_core.core.hooks import hooks, HookContext
 
-            hook_id = f"cancel_{op.id}"
-
-            @hooks.register("on_turn_start", priority=100)
             def check_cancel(ctx: HookContext, original_fn):
                 if op.cancel_event.is_set():
                     raise AgentCancelled(f"Operation {op.id} cancelled by user")
                 return original_fn(ctx)
 
-            # Register progress forwarding hook
-            @hooks.register("on_tool_end", priority=5)
             def forward_tool_progress(ctx: HookContext, original_fn):
                 result = original_fn(ctx)
                 try:
@@ -145,7 +181,6 @@ class AgentService:
                     pass
                 return result
 
-            @hooks.register("on_turn_end", priority=5)
             def forward_turn_progress(ctx: HookContext, original_fn):
                 result = original_fn(ctx)
                 try:
@@ -157,6 +192,15 @@ class AgentService:
                 except asyncio.QueueFull:
                     pass
                 return result
+
+            hooks.register_fn("on_turn_start", check_cancel, priority=100)
+            hooks.register_fn("on_tool_end", forward_tool_progress, priority=5)
+            hooks.register_fn("on_turn_end", forward_turn_progress, priority=5)
+            registered_hooks = [
+                ("on_turn_start", check_cancel),
+                ("on_tool_end", forward_tool_progress),
+                ("on_turn_end", forward_turn_progress),
+            ]
 
             # Run the agent
             from mem_deep_research import DeepResearch
@@ -189,6 +233,18 @@ class AgentService:
 
         finally:
             op.duration_seconds = time.time() - start_time
+            op._finished_at = time.time()
+
+            # Unregister hooks to prevent accumulation
+            from mem_deep_research_core.core.hooks import hooks
+            for hook_name, fn in registered_hooks:
+                try:
+                    hooks._hooks[hook_name] = [
+                        (p, f) for p, f in hooks._hooks.get(hook_name, [])
+                        if f is not fn
+                    ]
+                except Exception:
+                    pass
 
             # Update graph metadata
             graph_service.update_meta_from_graph(op.graph_id)
