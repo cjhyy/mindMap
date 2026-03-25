@@ -83,10 +83,20 @@ def log_turn_progress(ctx: HookContext, original_fn):
 
 @hooks.register("on_system_prompt_build", priority=5)
 def inject_graph_state(ctx: HookContext, original_fn):
-    """Inject existing graph state summary so the agent knows the current state."""
+    """Inject existing graph state summary so the agent knows the current state.
+
+    Reads from the currently configured _graph_path in the manager server,
+    which works for both CLI mode (default path) and API mode (per-graph path).
+    """
     prompt = original_fn(ctx)
 
-    graph_path = Path(__file__).parent / "data" / "knowledge_graph.json"
+    # Read from the path the manager is currently configured to use
+    try:
+        from tools.mindmap_manager_server import _graph_path
+        graph_path = _graph_path
+    except ImportError:
+        graph_path = Path(__file__).parent / "data" / "knowledge_graph.json"
+
     if graph_path.exists():
         try:
             data = json.loads(graph_path.read_text(encoding="utf-8"))

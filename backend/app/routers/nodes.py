@@ -37,6 +37,9 @@ async def list_nodes(
         d = domain.lower()
         nodes = [n for n in nodes if d in n.domain.lower()]
     if status:
+        valid_statuses = {"unexplored", "explored", "expanded"}
+        if status not in valid_statuses:
+            raise HTTPException(400, f"Invalid status: '{status}'. Use: {', '.join(valid_statuses)}")
         nodes = [n for n in nodes if n.status.value == status]
 
     return [

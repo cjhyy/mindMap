@@ -91,7 +91,7 @@ def _render_full_markdown(g: KnowledgeGraph) -> str:
     lines: list[str] = []
 
     # Header
-    root_label = g.nodes[g.root_node_id].label if g.root_node_id else g.name
+    root_label = g.nodes[g.root_node_id].label if (g.root_node_id and g.root_node_id in g.nodes) else g.name
     lines.append(f"# {root_label}")
     lines.append("")
     if g.description:
@@ -106,7 +106,8 @@ def _render_full_markdown(g: KnowledgeGraph) -> str:
     lines.append("")
 
     # Table of contents
-    if g.root_node_id:
+    has_root = g.root_node_id and g.root_node_id in g.nodes
+    if has_root:
         lines.append("## 目录")
         lines.append("")
         for child in g.get_children(g.root_node_id):
@@ -118,7 +119,7 @@ def _render_full_markdown(g: KnowledgeGraph) -> str:
     lines.append("---")
     lines.append("")
 
-    if g.root_node_id:
+    if has_root:
         for child in g.get_children(g.root_node_id):
             _render_branch(g, child, 2, lines)
 

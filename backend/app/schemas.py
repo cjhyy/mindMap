@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Graph schemas ───────────────────────────────────────────
 
 
 class GraphCreate(BaseModel):
-    name: str
-    description: str = ""
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str = Field("", max_length=2000)
 
 
 class GraphMeta(BaseModel):
@@ -31,8 +31,8 @@ class GraphDetail(GraphMeta):
 
 
 class AgentCreateRequest(BaseModel):
-    task: str
-    background: str = ""
+    task: str = Field(..., min_length=1, max_length=5000)
+    background: str = Field("", max_length=2000)
 
 
 class AgentExpandRequest(BaseModel):
@@ -40,7 +40,7 @@ class AgentExpandRequest(BaseModel):
 
 
 class AgentQueryRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=5000)
 
 
 class OperationResponse(BaseModel):
