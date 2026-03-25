@@ -7,7 +7,7 @@ main_agent:
 
   llm:
     provider_class: "ClaudeOpenRouterClient"
-    model_name: "anthropic/claude-sonnet-4"
+    model_name: "anthropic/claude-opus-4"
     async_client: true
     temperature: 0.3
     top_p: 0.95
