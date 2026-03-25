@@ -30,7 +30,7 @@ main_agent:
   tool_config:
     - tool-mindmap-manager
     - tool-mindmap-renderer
-    # - tool-searching-serper  # Uncomment when SERPER_API_KEY is configured
+    - tool-searching-serper
 
   max_turns: 25
   max_tool_calls_per_turn: 8

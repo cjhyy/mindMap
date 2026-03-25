@@ -87,6 +87,12 @@ class NodeDetail(BaseModel):
     updated_at: str
     children: list[dict]
     cross_connections: list[NodeConnection]
+    # Document fields
+    has_doc: bool = False
+    content_depth: str = "shallow"
+    doc_summary: str = ""
+    doc_sections: list[str] = []
+    doc_url: str | None = None
 
 
 class NodeUpdate(BaseModel):
@@ -126,3 +132,17 @@ class MarkdownImportResult(BaseModel):
     nodes_updated: int
     nodes_added: int
     errors: list[str]
+
+
+# ── Document schemas ───────────────────────────────────────
+
+
+class NodeDocResponse(BaseModel):
+    node_id: str
+    label: str
+    content: str
+    sections: list[str]
+
+
+class NodeDocUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=100000)

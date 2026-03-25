@@ -61,9 +61,32 @@ class GraphService:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._index_lock = threading.Lock()
 
-    def get_graph_path(self, graph_id: str) -> Path:
+    def get_graph_dir(self, graph_id: str) -> Path:
+        """Get the directory for a graph (contains graph.json + docs/)."""
         _validate_graph_id(graph_id)
-        return self.data_dir / f"{graph_id}.json"
+        return self.data_dir / graph_id
+
+    def get_graph_path(self, graph_id: str) -> Path:
+        """Get the graph.json file path. Supports both old (flat) and new (dir) format."""
+        _validate_graph_id(graph_id)
+        dir_path = self.data_dir / graph_id / "graph.json"
+        flat_path = self.data_dir / f"{graph_id}.json"
+        # Prefer directory format; fall back to flat file for backward compat
+        if dir_path.exists():
+            return dir_path
+        if flat_path.exists():
+            return flat_path
+        # New graphs use directory format
+        return dir_path
+
+    def get_docs_dir(self, graph_id: str) -> Path:
+        _validate_graph_id(graph_id)
+        docs_dir = self.data_dir / graph_id / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        return docs_dir
+
+    def get_node_doc_path(self, graph_id: str, node_id: str) -> Path:
+        return self.get_docs_dir(graph_id) / f"{node_id}.md"
 
     def create_graph(self, name: str, description: str = "") -> GraphMeta:
         if not name or len(name) > 200:
@@ -71,7 +94,11 @@ class GraphService:
 
         graph_id = uuid4().hex[:8]
         graph = KnowledgeGraph(name=name, description=description)
-        path = self.get_graph_path(graph_id)
+        # Use directory format
+        graph_dir = self.get_graph_dir(graph_id)
+        graph_dir.mkdir(parents=True, exist_ok=True)
+        (graph_dir / "docs").mkdir(exist_ok=True)
+        path = graph_dir / "graph.json"
         graph.save(path)
 
         meta = GraphMeta(
@@ -112,7 +139,13 @@ class GraphService:
         path = self.get_graph_path(graph_id)
         if not path.exists():
             return False
-        path.unlink()
+        # Remove directory format (graph_id/) or flat file (graph_id.json)
+        graph_dir = self.data_dir / graph_id
+        if graph_dir.is_dir():
+            import shutil
+            shutil.rmtree(graph_dir)
+        else:
+            path.unlink()
         self._remove_meta(graph_id)
         return True
 

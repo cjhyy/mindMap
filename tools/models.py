@@ -17,6 +17,12 @@ class NodeStatus(str, Enum):
     EXPANDED = "expanded"
 
 
+class ContentDepth(str, Enum):
+    SHALLOW = "shallow"    # 一句话摘要
+    MEDIUM = "medium"      # 几段话描述
+    DEEP = "deep"          # 独立 MD 文档
+
+
 class EdgeType(str, Enum):
     PARENT_CHILD = "parent_child"
     CROSS_DOMAIN = "cross_domain"
@@ -46,16 +52,23 @@ class KnowledgeNode:
     created_at: str = field(default_factory=_now_iso)
     updated_at: str = field(default_factory=_now_iso)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Document fields
+    has_doc: bool = False
+    doc_summary: str = ""
+    doc_sections: list[str] = field(default_factory=list)
+    content_depth: ContentDepth = ContentDepth.SHALLOW
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["status"] = self.status.value
+        d["content_depth"] = self.content_depth.value
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> KnowledgeNode:
         d = dict(d)
         d["status"] = NodeStatus(d.get("status", "unexplored"))
+        d["content_depth"] = ContentDepth(d.get("content_depth", "shallow"))
         valid_fields = cls.__dataclass_fields__
         return cls(**{k: v for k, v in d.items() if k in valid_fields})
 

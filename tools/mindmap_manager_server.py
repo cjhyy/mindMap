@@ -656,5 +656,236 @@ async def find_cross_connections(node_id: str) -> str:
     })
 
 
+# ── Tool: assess_node_depth ─────────────────────────────────
+
+
+@mcp.tool()
+async def assess_node_depth(node_id: str) -> str:
+    """Assess whether a knowledge node is deep enough to warrant an independent document.
+
+    Evaluates the node's topic complexity and returns a recommended content depth:
+    - shallow: Simple concept, one-sentence description is enough
+    - medium: Has some depth, needs a few paragraphs
+    - deep: Complex topic with sub-concepts, code examples, best practices — needs a full MD article
+
+    Args:
+        node_id: The node to assess
+
+    Returns:
+        JSON with current depth, recommended depth, and reasoning
+    """
+    g = _get_graph()
+    node = g.nodes.get(node_id)
+    if not node:
+        return _err(f"Node '{node_id}' not found")
+
+    children = g.get_children(node_id)
+    connections = g.get_non_tree_connections(node_id)
+
+    # Heuristic scoring
+    score = 0
+    reasons = []
+
+    if len(children) >= 3:
+        score += 2
+        reasons.append(f"Has {len(children)} sub-topics")
+    if len(connections) >= 2:
+        score += 1
+        reasons.append(f"Has {len(connections)} cross-connections")
+    if node.level <= 2:
+        score += 1
+        reasons.append("High-level topic (level {})".format(node.level))
+    if any(kw in node.label.lower() for kw in ["工程", "技术", "框架", "模式", "architecture", "engineering", "pattern"]):
+        score += 1
+        reasons.append("Technical/engineering topic")
+    if node.tags and len(node.tags) >= 3:
+        score += 1
+        reasons.append(f"Rich tagging ({len(node.tags)} tags)")
+
+    if score >= 4:
+        recommended = "deep"
+    elif score >= 2:
+        recommended = "medium"
+    else:
+        recommended = "shallow"
+
+    return _ok({
+        "node_id": node_id,
+        "label": node.label,
+        "current_depth": node.content_depth.value,
+        "recommended_depth": recommended,
+        "score": score,
+        "reasons": reasons,
+    })
+
+
+# ── Tool: generate_node_doc ────────────────────────────────
+
+
+@mcp.tool()
+async def generate_node_doc(node_id: str, content: str) -> str:
+    """Save a comprehensive Markdown document for a knowledge node.
+
+    The content should be a well-structured article covering:
+    - Overview / definition
+    - Core concepts and principles
+    - Code examples (if applicable)
+    - Practical tips and best practices
+    - Related knowledge points
+    - References and resources
+
+    Use YAML frontmatter format at the top of the document.
+
+    Args:
+        node_id: The node to create documentation for
+        content: Full Markdown content of the document
+
+    Returns:
+        JSON with save status, doc path, and summary
+    """
+    from tools.models import ContentDepth
+
+    async with _graph_lock:
+        g = _get_graph()
+        node = g.nodes.get(node_id)
+        if not node:
+            return _err(f"Node '{node_id}' not found")
+
+        # Save document to docs/ directory
+        docs_dir = _graph_path.parent / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        doc_path = docs_dir / f"{node_id}.md"
+        doc_path.write_text(content, encoding="utf-8")
+
+        # Update node metadata
+        node.has_doc = True
+        node.content_depth = ContentDepth.DEEP
+
+        # Extract summary (first non-frontmatter, non-heading paragraph)
+        lines = content.split("\n")
+        summary_lines = []
+        in_frontmatter = False
+        for line in lines:
+            if line.strip() == "---":
+                in_frontmatter = not in_frontmatter
+                continue
+            if in_frontmatter:
+                continue
+            if line.startswith("#") or line.startswith(">") or not line.strip():
+                continue
+            summary_lines.append(line.strip())
+            if len(" ".join(summary_lines)) > 200:
+                break
+        node.doc_summary = " ".join(summary_lines)[:200]
+
+        # Extract section headings
+        sections = [line.lstrip("#").strip() for line in lines if line.startswith("## ")]
+        node.doc_sections = sections
+
+        node.updated_at = _now_iso()
+        _save()
+
+    return _ok({
+        "status": "doc_saved",
+        "node_id": node_id,
+        "label": node.label,
+        "doc_path": str(doc_path),
+        "sections": sections,
+        "summary": node.doc_summary,
+    })
+
+
+# ── Tool: get_node_doc ─────────────────────────────────────
+
+
+@mcp.tool()
+async def get_node_doc(node_id: str) -> str:
+    """Read the full Markdown document for a knowledge node.
+
+    Args:
+        node_id: The node whose document to read
+
+    Returns:
+        JSON with the document content, or error if no document exists
+    """
+    g = _get_graph()
+    node = g.nodes.get(node_id)
+    if not node:
+        return _err(f"Node '{node_id}' not found")
+
+    if not node.has_doc:
+        return _err(f"Node '{node.label}' has no document. Use generate_node_doc to create one.")
+
+    doc_path = _graph_path.parent / "docs" / f"{node_id}.md"
+    if not doc_path.exists():
+        return _err(f"Document file not found for '{node.label}'")
+
+    content = doc_path.read_text(encoding="utf-8")
+    return _ok({
+        "node_id": node_id,
+        "label": node.label,
+        "content": content,
+        "sections": node.doc_sections,
+    })
+
+
+# ── Tool: update_node_doc ──────────────────────────────────
+
+
+@mcp.tool()
+async def update_node_doc(node_id: str, content: str) -> str:
+    """Update an existing document for a knowledge node.
+
+    Args:
+        node_id: The node whose document to update
+        content: New full Markdown content
+
+    Returns:
+        JSON with update status
+    """
+    from tools.models import ContentDepth
+
+    async with _graph_lock:
+        g = _get_graph()
+        node = g.nodes.get(node_id)
+        if not node:
+            return _err(f"Node '{node_id}' not found")
+
+        doc_path = _graph_path.parent / "docs" / f"{node_id}.md"
+        doc_path.parent.mkdir(parents=True, exist_ok=True)
+        doc_path.write_text(content, encoding="utf-8")
+
+        node.has_doc = True
+        node.content_depth = ContentDepth.DEEP
+
+        # Re-extract summary and sections
+        lines = content.split("\n")
+        summary_lines = []
+        in_frontmatter = False
+        for line in lines:
+            if line.strip() == "---":
+                in_frontmatter = not in_frontmatter
+                continue
+            if in_frontmatter:
+                continue
+            if line.startswith("#") or line.startswith(">") or not line.strip():
+                continue
+            summary_lines.append(line.strip())
+            if len(" ".join(summary_lines)) > 200:
+                break
+        node.doc_summary = " ".join(summary_lines)[:200]
+        node.doc_sections = [line.lstrip("#").strip() for line in lines if line.startswith("## ")]
+
+        node.updated_at = _now_iso()
+        _save()
+
+    return _ok({
+        "status": "doc_updated",
+        "node_id": node_id,
+        "label": node.label,
+        "sections": node.doc_sections,
+    })
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio", show_banner=False)
