@@ -143,7 +143,7 @@ export function ExploreModal() {
                 <div key={i} className="flex flex-wrap gap-1 justify-end">
                   {scopes.map((s) => (
                     <span key={s} className="text-[11px] px-2 py-0.5 rounded"
-                      style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>{s}</span>
+                      style={{ background: 'var(--accent-dim)', color: 'var(--accent-blue)' }}>{s}</span>
                   ))}
                 </div>
               )
@@ -175,7 +175,7 @@ export function ExploreModal() {
         {/* Scope selection */}
         {userProfile && !exploring && (
           <div className="px-5 py-3 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
-            <div className="text-[11px] font-medium mb-2" style={{ color: 'var(--accent)' }}>选择探索范围</div>
+            <div className="text-[11px] font-medium mb-2" style={{ color: 'var(--accent-blue)' }}>选择探索范围</div>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {userProfile.scope.map((s) => {
                 const checked = checkedScope.includes(s)
@@ -183,7 +183,7 @@ export function ExploreModal() {
                   <button key={s} onClick={() => toggleScope(s)}
                     className="text-[11px] px-2.5 py-1 rounded cursor-pointer transition-all duration-150"
                     style={checked
-                      ? { background: 'var(--accent)', color: 'var(--bg)', border: '1px solid var(--accent)' }
+                      ? { background: 'var(--accent-blue)', color: 'white', border: '1px solid var(--accent-blue)' }
                       : { background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-2)' }
                     }>
                     {checked ? '✓ ' : ''}{s}
@@ -212,7 +212,7 @@ export function ExploreModal() {
               />
               <button onClick={send} disabled={!input.trim() || chatLoading}
                 className="shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-150 text-[12px] font-bold disabled:opacity-20"
-                style={{ background: 'var(--accent)', color: 'var(--bg)' }}>
+                style={{ background: 'var(--accent-blue)', color: 'white' }}>
                 ↑
               </button>
             </div>

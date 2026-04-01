@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useOperation } from '../../hooks/useOperation'
 import { api } from '../../api/client'
@@ -8,6 +9,18 @@ export function AgentBar() {
     pendingContinue, autoRoundsLeft, setAutoRoundsLeft, setPendingContinue,
   } = useGraphStore()
   const { run, cancel } = useOperation()
+
+  // Auto-continue: trigger next round after 1.5s delay
+  useEffect(() => {
+    if (pendingContinue && autoRoundsLeft > 0 && !isStreaming && activeGraphId) {
+      const timer = setTimeout(() => {
+        setAutoRoundsLeft(autoRoundsLeft - 1)
+        setPendingContinue(null)
+        run(() => api.agentAuto(activeGraphId))
+      }, 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [pendingContinue, autoRoundsLeft, isStreaming, activeGraphId])
 
   if (!activeGraphId || !activeGraph) return null
 
@@ -38,13 +51,13 @@ export function AgentBar() {
   if (!isStreaming && !pendingContinue && !hasWork && nodeCount === 0) return null
 
   return (
-    <div className="shrink-0 px-3 py-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+    <div className="shrink-0 px-3 py-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--sidebar)' }}>
       {/* Streaming state */}
       {isStreaming && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="animate-subtle-pulse text-[8px]" style={{ color: 'var(--accent)' }}>●</span>
-            <span className="text-[11px] font-medium truncate" style={{ color: 'var(--accent)' }}>
+            <span className="animate-subtle-pulse text-[8px]" style={{ color: 'var(--accent-blue)' }}>●</span>
+            <span className="text-[11px] font-medium truncate" style={{ color: 'var(--accent-blue)' }}>
               运行中
               {autoRoundsLeft > 0 && <span className="text-[10px] ml-1" style={{ color: 'var(--text-muted)' }}>· 剩余 {autoRoundsLeft} 轮</span>}
             </span>
@@ -74,11 +87,11 @@ export function AgentBar() {
               <button onClick={fillDocs} className="flex-1 text-[10px] py-1 rounded border transition-colors"
                 style={{ borderColor: 'var(--info)', color: 'var(--info)' }}>填充文档</button>
             )}
-            <button onClick={continueExplore} className="flex-1 text-[10px] py-1 rounded border border-[var(--border-2)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors">
+            <button onClick={continueExplore} className="flex-1 text-[10px] py-1 rounded border border-[var(--border-2)] text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:border-[var(--accent-blue)] transition-colors">
               续跑
             </button>
             <button onClick={() => startAutoContinue(3)} className="flex-1 text-[10px] py-1 rounded font-medium transition-colors"
-              style={{ background: 'var(--accent)', color: 'var(--bg)' }}>
+              style={{ background: 'var(--accent-blue)', color: 'white' }}>
               自动 3 轮
             </button>
           </div>
@@ -98,7 +111,7 @@ export function AgentBar() {
               <button onClick={fillDocs} className="text-[10px] px-2 py-0.5 rounded border transition-colors"
                 style={{ borderColor: 'var(--info)', color: 'var(--info)' }}>文档</button>
             )}
-            <button onClick={continueExplore} className="text-[10px] px-2 py-0.5 rounded border border-[var(--border-2)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors">
+            <button onClick={continueExplore} className="text-[10px] px-2 py-0.5 rounded border border-[var(--border-2)] text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:border-[var(--accent-blue)] transition-colors">
               续跑
             </button>
           </div>

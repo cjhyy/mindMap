@@ -60,9 +60,9 @@ export function AppShell() {
   return (
       <div className="flex h-full overflow-hidden bg-background">
         {/* ── Sidebar ── */}
-        {!sidebarCollapsed && (
+        {!sidebarCollapsed ? (
           <aside className="w-56 shrink-0 flex flex-col overflow-hidden border-r bg-sidebar">
-            {/* Graph selector */}
+            {/* Header: graph selector + collapse */}
             <div className="p-3 space-y-2 shrink-0">
               <div className="flex items-center gap-1">
                 <Select value={activeGraphId ?? ''} onValueChange={selectGraph}>
@@ -84,7 +84,14 @@ export function AppShell() {
                     <span className="text-xs">✕</span>
                   </Button>
                 )}
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSidebarCollapsed(true)} title="收起侧边栏">
+                  <span className="text-xs">‹‹</span>
+                </Button>
               </div>
+              <Button variant="outline" size="sm" className="w-full text-xs h-7 border-dashed" onClick={openNewExplore}>
+                + 新探索
+              </Button>
             </div>
 
             <Separator />
@@ -128,18 +135,15 @@ export function AppShell() {
               </>
             )}
           </aside>
+        ) : (
+          /* Collapsed: small expand button */
+          <div className="shrink-0 flex flex-col items-center py-3 px-1 border-r bg-sidebar">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => setSidebarCollapsed(false)} title="展开侧边栏">
+              <span className="text-xs">››</span>
+            </Button>
+          </div>
         )}
-
-        {/* Sidebar toggle */}
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          onKeyDown={(e) => { if (e.key === 'Enter') setSidebarCollapsed(!sidebarCollapsed) }}
-          className="shrink-0 w-5 flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-colors border-r bg-sidebar/50"
-          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}>
-          <span className="text-[10px]">{sidebarCollapsed ? '›' : '‹'}</span>
-        </div>
 
         {/* ── Main: Document ── */}
         <main className="flex-1 min-w-0 flex flex-col overflow-hidden bg-background">

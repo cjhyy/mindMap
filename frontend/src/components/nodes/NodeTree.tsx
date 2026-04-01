@@ -85,7 +85,7 @@ function TreeNode({ nodeId, nodes, childrenOf, activeNodeId, onSelect, onDelete,
   if (!node) return null
 
   const isActive = activeNodeId === nodeId
-  const statusColor = node.status === 'expanded' ? 'var(--accent)'
+  const statusColor = node.status === 'expanded' ? 'var(--accent-blue)'
     : node.status === 'explored' ? 'var(--info)' : 'var(--text-muted)'
   const mark = node.status === 'expanded' ? '✓' : node.status === 'explored' ? '○' : '·'
 
@@ -104,7 +104,7 @@ function TreeNode({ nodeId, nodes, childrenOf, activeNodeId, onSelect, onDelete,
         style={{
           paddingLeft: `${8 + depth * 16}px`,
           background: isActive ? 'var(--accent-dim)' : undefined,
-          borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+          borderLeft: isActive ? '2px solid var(--accent-blue)' : '2px solid transparent',
         }}
         onMouseEnter={(e) => { setHovered(true); if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)' }}
         onMouseLeave={(e) => { setHovered(false); if (!isActive) (e.currentTarget as HTMLElement).style.background = '' }}
@@ -119,7 +119,7 @@ function TreeNode({ nodeId, nodes, childrenOf, activeNodeId, onSelect, onDelete,
               style={{ color: 'var(--text-muted)', transform: open ? 'rotate(0)' : 'rotate(-90deg)', display: 'inline-block' }}>▾</span>
           ) : <span className="w-2.5 shrink-0" />}
           <span className="text-[10px] mono shrink-0" style={{ color: statusColor }}>{mark}</span>
-          <span className="text-[12px] truncate" style={{ color: isActive ? 'var(--accent)' : 'var(--text)', fontWeight: isActive ? 500 : 400 }}>
+          <span className="text-[12px] truncate" style={{ color: isActive ? 'var(--accent-blue)' : 'var(--text)', fontWeight: isActive ? 500 : 400 }}>
             {node.label}
           </span>
           {node.has_doc && <span className="text-[9px] shrink-0" style={{ opacity: 0.4 }}>📄</span>}

@@ -81,7 +81,7 @@ export function DocumentView({ graphId }: { graphId: string }) {
                 onBlur={saveLabel}
                 onKeyDown={(e) => { if (e.key === 'Enter') saveLabel(); if (e.key === 'Escape') setEditingLabel(false) }}
                 className="display text-[18px] font-semibold w-full outline-none rounded px-1 -ml-1"
-                style={{ color: 'var(--text)', border: '1px solid var(--accent)', background: 'var(--surface-2)' }}
+                style={{ color: 'var(--text)', border: '1px solid var(--accent-blue)', background: 'var(--surface-2)' }}
               />
             ) : (
               <h1 className="display text-[18px] font-semibold cursor-text rounded px-1 -ml-1 transition-colors"
@@ -131,7 +131,7 @@ export function DocumentView({ graphId }: { graphId: string }) {
                         <button key={c.id} onClick={() => setActiveNode(c.id)}
                           className="text-[11px] px-2 py-0.5 rounded transition-colors hover:bg-[var(--surface-2)]"
                           style={{ color: 'var(--text)', border: '1px solid var(--border-2)' }}>
-                          <span className="mono text-[9px] mr-1" style={{ color: c.status === 'expanded' ? 'var(--accent)' : c.status === 'explored' ? 'var(--info)' : 'var(--text-muted)' }}>
+                          <span className="mono text-[9px] mr-1" style={{ color: c.status === 'expanded' ? 'var(--accent-blue)' : c.status === 'explored' ? 'var(--info)' : 'var(--text-muted)' }}>
                             {c.status === 'expanded' ? '✓' : c.status === 'explored' ? '○' : '·'}
                           </span>
                           {c.label}
@@ -189,7 +189,7 @@ function GraphOverview() {
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
         <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
           style={{ background: 'var(--accent-dim)', border: '1px solid rgba(212,165,116,0.15)' }}>
-          <span style={{ color: 'var(--accent)', fontSize: '20px' }}>◇</span>
+          <span style={{ color: 'var(--accent-blue)', fontSize: '20px' }}>◇</span>
         </div>
         <h2 className="display text-lg font-semibold mb-2" style={{ color: 'var(--text)' }}>知识图谱</h2>
         <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
