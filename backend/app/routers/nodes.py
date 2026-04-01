@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from app.config import PROJECT_DIR
-from app.schemas import NodeDetail, NodeConnection, NodeDocResponse, NodeDocUpdate, NodeListItem, NodeUpdate
-from app.services.graph_service import graph_service
+from backend.app.config import PROJECT_DIR
+from backend.app.schemas import NodeDetail, NodeConnection, NodeDocResponse, NodeDocUpdate, NodeListItem, NodeUpdate
+from backend.app.services.graph_service import graph_service
 
-sys.path.insert(0, str(PROJECT_DIR))
-
-from tools.models import EdgeType, KnowledgeGraph, NodeStatus
+from backend.tools.models import EdgeType, KnowledgeGraph, NodeStatus
 
 router = APIRouter(prefix="/api/graphs/{graph_id}/nodes", tags=["nodes"])
 
@@ -115,7 +112,7 @@ async def update_node(graph_id: str, node_id: str, req: NodeUpdate):
         except ValueError:
             raise HTTPException(400, f"Invalid status: '{req.status}'")
 
-    from tools.models import _now_iso
+    from backend.tools.models import _now_iso
     node.updated_at = _now_iso()
 
     # Save graph back to file
@@ -163,7 +160,7 @@ async def update_node_doc(graph_id: str, node_id: str, req: NodeDocUpdate):
     doc_path.write_text(req.content, encoding="utf-8")
 
     # Update node metadata
-    from tools.models import ContentDepth, _now_iso
+    from backend.tools.models import ContentDepth, _now_iso
     node.has_doc = True
     node.content_depth = ContentDepth.DEEP
 
@@ -207,7 +204,7 @@ async def delete_node_doc(graph_id: str, node_id: str):
     if doc_path.exists():
         doc_path.unlink()
 
-    from tools.models import ContentDepth, _now_iso
+    from backend.tools.models import ContentDepth, _now_iso
     node.has_doc = False
     node.content_depth = ContentDepth.SHALLOW
     node.doc_summary = ""
@@ -219,6 +216,44 @@ async def delete_node_doc(graph_id: str, node_id: str):
     graph_service.update_meta_from_graph(graph_id)
 
     return {"status": "deleted", "node_id": node_id}
+
+
+@router.delete("/{node_id}")
+async def delete_node(graph_id: str, node_id: str):
+    """Delete a node and all its descendants (subtree)."""
+    g = _load_graph(graph_id)
+    if node_id not in g.nodes:
+        raise HTTPException(404, f"Node '{node_id}' not found")
+    if node_id == g.root_node_id:
+        raise HTTPException(400, "Cannot delete the root node")
+
+    label = g.nodes[node_id].label
+
+    # Collect entire subtree via BFS
+    subtree_ids = set(g.get_subtree_ids(node_id))
+    subtree_ids.add(node_id)
+
+    # Remove all edges touching any subtree node
+    edges_to_remove = [
+        eid for eid, e in g.edges.items()
+        if e.source_id in subtree_ids or e.target_id in subtree_ids
+    ]
+    for eid in edges_to_remove:
+        del g.edges[eid]
+
+    # Remove all subtree nodes
+    for nid in subtree_ids:
+        g.nodes.pop(nid, None)
+        # Also remove docs
+        doc_path = graph_service.get_node_doc_path(graph_id, nid)
+        if doc_path.exists():
+            doc_path.unlink()
+
+    path = graph_service.get_graph_path(graph_id)
+    g.save(path)
+    graph_service.update_meta_from_graph(graph_id)
+
+    return {"status": "deleted", "node_id": node_id, "label": label, "deleted_count": len(subtree_ids)}
 
 
 def _load_graph(graph_id: str) -> KnowledgeGraph:

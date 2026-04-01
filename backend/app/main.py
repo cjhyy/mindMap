@@ -6,13 +6,9 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure project root and framework are importable
+# Ensure project root (mindMap/) is importable
 PROJECT_DIR = Path(__file__).parent.parent.parent.resolve()
-FRAMEWORK_DIR = PROJECT_DIR.parent / "mem-deep-research"
-
 sys.path.insert(0, str(PROJECT_DIR))
-if FRAMEWORK_DIR.exists():
-    sys.path.insert(0, str(FRAMEWORK_DIR))
 
 # Load .env
 env_file = PROJECT_DIR / ".env"
@@ -24,10 +20,23 @@ if env_file.exists():
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key.strip(), value.strip())
 
+import logging
+
+# ── Logging setup ──
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-5s %(name)s  %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Quiet noisy libs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import agent, graphs, markdown, nodes
+from backend.app.routers import agent, chat, graphs, markdown, nodes
 
 app = FastAPI(
     title="Knowledge MindMap API",
@@ -43,6 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(chat.router)
 app.include_router(graphs.router)
 app.include_router(nodes.router)
 app.include_router(markdown.router)

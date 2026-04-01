@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from app.config import PROJECT_DIR
-from app.schemas import MarkdownExport, MarkdownImportRequest, MarkdownImportResult
-from app.services.graph_service import graph_service
+from backend.app.config import PROJECT_DIR
+from backend.app.schemas import MarkdownExport, MarkdownImportRequest, MarkdownImportResult
+from backend.app.services.graph_service import graph_service
 
-sys.path.insert(0, str(PROJECT_DIR))
-
-from tools.models import (
+from backend.tools.models import (
     EdgeType, KnowledgeEdge, KnowledgeGraph, KnowledgeNode, NodeStatus, _now_iso,
 )
 

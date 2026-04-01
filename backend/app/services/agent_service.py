@@ -9,8 +9,8 @@ import time
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from app.config import PROJECT_DIR
-from app.services.graph_service import graph_service
+from backend.app.config import PROJECT_DIR
+from backend.app.services.graph_service import graph_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,10 @@ class AgentOperation:
 
     id: str = field(default_factory=lambda: f"op_{uuid4().hex[:12]}")
     graph_id: str = ""
-    operation_type: str = ""  # create, expand, query, connect
+    operation_type: str = ""  # create, expand, query, connect, explore
     task: str = ""
+    config_name: str = "agent"
+    user_profile: dict = field(default_factory=dict)
     status: str = "pending"  # pending, running, completed, cancelled, failed
     result: str | None = None
     error: str | None = None
@@ -63,6 +65,7 @@ class AgentService:
 
     async def start_operation(
         self, graph_id: str, operation_type: str, task: str,
+        config_name: str = "agent", user_profile: dict | None = None,
     ) -> AgentOperation:
         # Validate graph_id format (prevent path traversal)
         if not re.match(r'^[a-f0-9]{8}$', graph_id):
@@ -76,6 +79,8 @@ class AgentService:
             graph_id=graph_id,
             operation_type=operation_type,
             task=task,
+            config_name=config_name,
+            user_profile=user_profile or {},
         )
         self.operations[op.id] = op
 
@@ -143,6 +148,13 @@ class AgentService:
         start_time = time.time()
         registered_hooks: list[tuple[str, object]] = []
 
+        # Start a new log file for this run
+        from backend.hooks import reset_file_logger, flog
+        reset_file_logger()
+        flog(f"▶ {op.operation_type} | op={op.id} graph={op.graph_id}")
+        flog(f"  task: {op.task[:300]}")
+        logger.info(f"[Agent] ▶ {op.operation_type} | op={op.id} graph={op.graph_id}")
+
         await op.stream_queue.put({
             "type": "started",
             "operation_id": op.id,
@@ -153,14 +165,21 @@ class AgentService:
             # Configure MCP tools to use the correct graph file
             graph_path = graph_service.get_graph_path(op.graph_id)
 
-            from tools.mindmap_manager_server import set_graph_path as mgr_set_path, reset_graph
-            from tools.mindmap_renderer_server import set_graph_path as rdr_set_path
+            from backend.tools.mindmap_manager_server import set_graph_path as mgr_set_path, reset_graph
+            from backend.tools.mindmap_renderer_server import set_graph_path as rdr_set_path
 
             mgr_set_path(graph_path)
             rdr_set_path(graph_path)
             reset_graph()
 
-            # Register hooks (track them for cleanup)
+            # Run the agent — MUST create DeepResearch first, because from_project()
+            # calls load_project_hooks() which clears all hooks before reloading hooks.py.
+            # Registering our SSE-forwarding hooks before this would get them wiped out.
+            from mem_deep_research import DeepResearch
+
+            dr = DeepResearch.from_project(PROJECT_DIR / "backend", config_name=op.config_name)
+
+            # Register hooks AFTER from_project() so they survive the hooks.clear()
             from mem_deep_research_core.core.hooks import hooks, HookContext
 
             def check_cancel(ctx: HookContext, original_fn):
@@ -170,6 +189,8 @@ class AgentService:
 
             def forward_tool_progress(ctx: HookContext, original_fn):
                 result = original_fn(ctx)
+                dur = f"{ctx.duration_ms}ms" if ctx.duration_ms else "?"
+                logger.info(f"[Agent] T{ctx.turn_number} ⚙ {ctx.tool_name} ({dur})")
                 try:
                     op.stream_queue.put_nowait({
                         "type": "tool_call",
@@ -183,6 +204,7 @@ class AgentService:
 
             def forward_turn_progress(ctx: HookContext, original_fn):
                 result = original_fn(ctx)
+                logger.info(f"[Agent] ↩ Turn {ctx.turn_number} done · {ctx.tool_calls_count} tools")
                 try:
                     op.stream_queue.put_nowait({
                         "type": "turn_end",
@@ -201,18 +223,28 @@ class AgentService:
                 ("on_tool_end", forward_tool_progress),
                 ("on_turn_end", forward_turn_progress),
             ]
-
-            # Run the agent
-            from mem_deep_research import DeepResearch
-
-            dr = DeepResearch.from_project(PROJECT_DIR, config_name="agent")
             try:
-                agent_result = await dr.run(op.task, stream_queue=op.stream_queue)
+                task = op.task
+                if op.user_profile:
+                    p = op.user_profile
+                    profile_text = (
+                        f"[用户画像] 主题：{p.get('topic','')} | "
+                        f"背景：{p.get('background','')} | "
+                        f"目的：{p.get('goal','')} | "
+                        f"范围：{', '.join(p.get('scope', []))}"
+                    )
+                    task = f"{profile_text}\n\n{task}"
+                agent_result = await dr.run(task, stream_queue=op.stream_queue)
 
                 op.status = "completed"
                 op.result = agent_result.answer
                 op.turns = agent_result.turns
                 op.tool_calls = agent_result.tool_calls
+                logger.info(f"[Agent] ✓ Completed | {op.turns} turns, {op.tool_calls} tools")
+                from backend.hooks import flog
+                flog(f"✓ Completed | {op.turns} turns, {op.tool_calls} tools, {time.time() - start_time:.1f}s")
+                if op.result:
+                    flog(f"  result: {op.result[:500]}")
 
             except AgentCancelled:
                 op.status = "cancelled"

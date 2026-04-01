@@ -13,14 +13,19 @@ build/
 venv/
 env/
 
-# Data (keep .gitkeep)
-data/*.json
+# Data (runtime - gitignored, keep placeholder only)
 data/graphs/
-data/docs/
+data/*.json
 !data/.gitkeep
 
 # Logs
 logs/
+!logs/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
 
 # IDE
 .idea/

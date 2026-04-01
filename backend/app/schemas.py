@@ -39,6 +39,13 @@ class AgentExpandRequest(BaseModel):
     node_label: str
 
 
+class AgentExploreRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=500)
+    background: str = Field("", max_length=1000)
+    goal: str = Field("", max_length=1000)
+    scope: list[str] = Field(default_factory=list)
+
+
 class AgentQueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=5000)
 

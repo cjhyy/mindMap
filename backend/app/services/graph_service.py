@@ -10,8 +10,8 @@ import threading
 from pathlib import Path
 from uuid import uuid4
 
-from app.config import DATA_DIR
-from tools.models import KnowledgeGraph, _now_iso
+from backend.app.config import DATA_DIR
+from backend.tools.models import KnowledgeGraph, _now_iso
 
 # Regex for valid graph IDs (8 hex chars only)
 _GRAPH_ID_PATTERN = re.compile(r'^[a-f0-9]{8}$')
@@ -178,6 +178,44 @@ class GraphService:
                 "created_at": meta.created_at, "updated_at": meta.updated_at,
             }
             _atomic_write(meta_path, json.dumps(index, ensure_ascii=False, indent=2))
+
+    # ── Chat & Memory persistence ──
+
+    def get_chat(self, graph_id: str) -> list[dict]:
+        _validate_graph_id(graph_id)
+        path = self.data_dir / graph_id / "chat.json"
+        if not path.exists():
+            return []
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    def save_chat(self, graph_id: str, messages: list[dict]) -> None:
+        _validate_graph_id(graph_id)
+        graph_dir = self.data_dir / graph_id
+        if not graph_dir.exists():
+            raise ValueError(f"Graph '{graph_id}' not found")
+        _atomic_write(graph_dir / "chat.json",
+                      json.dumps(messages, ensure_ascii=False, indent=2))
+
+    def get_memory(self, graph_id: str) -> dict:
+        _validate_graph_id(graph_id)
+        path = self.data_dir / graph_id / "memory.json"
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def save_memory(self, graph_id: str, memory: dict) -> None:
+        _validate_graph_id(graph_id)
+        graph_dir = self.data_dir / graph_id
+        if not graph_dir.exists():
+            raise ValueError(f"Graph '{graph_id}' not found")
+        _atomic_write(graph_dir / "memory.json",
+                      json.dumps(memory, ensure_ascii=False, indent=2))
 
     def _remove_meta(self, graph_id: str) -> None:
         """Remove metadata atomically with lock."""

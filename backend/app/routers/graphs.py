@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import json
-import sys
 
 from fastapi import APIRouter, HTTPException
 
-from app.config import PROJECT_DIR
-from app.schemas import GraphCreate, GraphDetail, GraphMeta
-from app.services.graph_service import graph_service
+from backend.app.config import PROJECT_DIR
+from backend.app.schemas import GraphCreate, GraphDetail, GraphMeta
+from backend.app.services.graph_service import graph_service
 
 router = APIRouter(prefix="/api/graphs", tags=["graphs"])
 
-sys.path.insert(0, str(PROJECT_DIR))
 
 
 @router.post("", response_model=GraphMeta)
@@ -71,9 +69,9 @@ async def delete_graph(graph_id: str):
 async def render_mermaid(graph_id: str, max_depth: int = 3):
     g = _load_graph(graph_id)
     try:
-        from tools.mindmap_renderer_server import set_graph_path
+        from backend.tools.mindmap_renderer_server import set_graph_path
         set_graph_path(graph_service.get_graph_path(graph_id))
-        from tools.mindmap_renderer_server import render_mermaid as _render
+        from backend.tools.mindmap_renderer_server import render_mermaid as _render
         result = json.loads(await _render(max_depth=max_depth))
     except Exception as e:
         raise HTTPException(500, f"Render failed: {e}")
@@ -86,9 +84,9 @@ async def render_mermaid(graph_id: str, max_depth: int = 3):
 async def render_markdown(graph_id: str, max_depth: int = 4):
     g = _load_graph(graph_id)
     try:
-        from tools.mindmap_renderer_server import set_graph_path
+        from backend.tools.mindmap_renderer_server import set_graph_path
         set_graph_path(graph_service.get_graph_path(graph_id))
-        from tools.mindmap_renderer_server import render_markdown_outline as _render
+        from backend.tools.mindmap_renderer_server import render_markdown_outline as _render
         result = json.loads(await _render(max_depth=max_depth))
     except Exception as e:
         raise HTTPException(500, f"Render failed: {e}")
