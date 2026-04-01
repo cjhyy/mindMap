@@ -1,9 +1,7 @@
 import { create } from 'zustand'
-import type { GraphMeta, GraphDetail, OperationStatus, StreamEvent } from '../types'
+import type { GraphMeta, GraphDetail, StreamEvent } from '../types'
 import type { ChatMsg, UserProfile } from '../api/client'
 import { api } from '../api/client'
-
-export type AppMode = 'chat' | 'graph'  // kept for compat but unused in new layout
 
 export interface ProgressEntry {
   type: 'tool' | 'turn' | 'status' | 'phase' | 'nodes'
@@ -26,10 +24,6 @@ interface GraphSession {
 }
 
 interface GraphStore {
-  // App mode (legacy)
-  mode: AppMode
-  setMode: (m: AppMode) => void
-
   // Explore modal
   exploreModalOpen: boolean
   setExploreModalOpen: (v: boolean) => void
@@ -99,9 +93,6 @@ function _saveSessionToCache(state: GraphStore) {
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
-  mode: 'chat',
-  setMode: (mode) => set({ mode }),
-
   exploreModalOpen: false,
   setExploreModalOpen: (exploreModalOpen) => set({ exploreModalOpen }),
 
