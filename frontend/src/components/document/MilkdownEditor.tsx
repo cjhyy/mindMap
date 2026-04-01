@@ -19,6 +19,7 @@ export function MilkdownEditor({ value, onChange, onSave }: Props) {
   const onSaveRef = useRef(onSave)
   const valueRef = useRef(value)
   const suppressRef = useRef(false)
+  const internalMdRef = useRef(value)
 
   onChangeRef.current = onChange
   onSaveRef.current = onSave
@@ -37,13 +38,19 @@ export function MilkdownEditor({ value, onChange, onSave }: Props) {
         [Crepe.Feature.Placeholder]: {
           text: "输入 '/' 打开命令菜单...",
         },
+        [Crepe.Feature.Cursor]: {
+          virtual: false,
+        },
       },
     })
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, md, prev) => {
-        if (suppressRef.current || !readyRef.current) return
-        if (md !== prev) onChangeRef.current(md)
+        if (suppressRef.current || !readyRef.current || destroyed) return
+        if (md !== prev) {
+          internalMdRef.current = md
+          onChangeRef.current(md)
+        }
       })
     })
 
@@ -67,18 +74,17 @@ export function MilkdownEditor({ value, onChange, onSave }: Props) {
     }
   }, [])
 
-  // Sync external value changes
+  // Sync external value changes (skip if change originated from editor itself)
   useEffect(() => {
     if (!readyRef.current || !crepeRef.current) return
+    if (value === internalMdRef.current) return
     try {
-      const current = crepeRef.current.getMarkdown()
-      if (value !== current) {
-        suppressRef.current = true
-        crepeRef.current.editor.action(replaceAll(value))
-        suppressRef.current = false
-      }
+      suppressRef.current = true
+      crepeRef.current.editor.action(replaceAll(value))
+      internalMdRef.current = value
+      suppressRef.current = false
     } catch {
-      // Editor not ready or destroyed — ignore
+      suppressRef.current = false
     }
   }, [value])
 

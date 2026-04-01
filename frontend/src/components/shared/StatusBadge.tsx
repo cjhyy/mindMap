@@ -3,10 +3,10 @@ interface Props { status: string; size?: 'sm' | 'md' }
 const styles: Record<string, { color: string; bg: string; border: string }> = {
   unexplored: { color: 'var(--text-muted)', bg: 'transparent', border: 'var(--border-2)' },
   explored:   { color: 'var(--info)', bg: 'var(--info-dim)', border: 'rgba(126,184,218,0.2)' },
-  expanded:   { color: 'var(--accent)', bg: 'var(--accent-dim)', border: 'rgba(212,165,116,0.2)' },
+  expanded:   { color: 'var(--accent-blue)', bg: 'var(--accent-dim)', border: 'rgba(74,144,217,0.2)' },
   pending:    { color: 'var(--text-muted)', bg: 'transparent', border: 'var(--border-2)' },
   running:    { color: 'var(--warn)', bg: 'var(--warn-dim)', border: 'rgba(224,164,88,0.2)' },
-  completed:  { color: 'var(--accent)', bg: 'var(--accent-dim)', border: 'rgba(212,165,116,0.2)' },
+  completed:  { color: 'var(--accent-blue)', bg: 'var(--accent-dim)', border: 'rgba(74,144,217,0.2)' },
   cancelled:  { color: 'var(--text-muted)', bg: 'transparent', border: 'var(--border-2)' },
   failed:     { color: 'var(--error)', bg: 'var(--error-dim)', border: 'rgba(212,106,106,0.2)' },
 }

@@ -3,7 +3,7 @@ import { api } from '../../api/client'
 import { useGraphStore } from '../../stores/graphStore'
 import { useOperation } from '../../hooks/useOperation'
 import { StatusBadge } from '../shared/StatusBadge'
-import { MilkdownEditor } from './MilkdownEditor'
+import { TiptapEditor } from './TiptapEditor'
 import { AiPanel, type AiComment } from './AiPanel'
 import type { NodeDetail, NodeDocResponse } from '../../types'
 
@@ -392,10 +392,11 @@ function DocArea({ graphId, nodeId, node, doc, loading, onSaved }: {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Editor */}
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <MilkdownEditor
+          <TiptapEditor
             value={content}
             onChange={onEditorChange}
             onSave={save}
+            onComment={(comment) => setComments((prev) => [...prev, comment])}
           />
         </div>
 
@@ -404,17 +405,25 @@ function DocArea({ graphId, nodeId, node, doc, loading, onSaved }: {
           <div className="w-56 shrink-0 overflow-y-auto border-l py-2 px-2"
             style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
             <div className="text-[10px] font-semibold uppercase tracking-wider mb-2 px-1"
-              style={{ color: 'var(--text-muted)' }}>AI 批注</div>
+              style={{ color: 'var(--text-muted)' }}>批注</div>
             <div className="flex flex-col gap-2">
               {comments.map((c) => (
                 <div key={c.id} className="rounded border p-2 animate-fade-in"
                   style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                  {c.context !== '(全文)' && (
-                    <div className="text-[10px] mono truncate mb-1 px-1 py-0.5 rounded"
-                      style={{ background: 'var(--accent-dim)', color: 'var(--accent-blue)' }}>
-                      "{c.context.slice(0, 30)}{c.context.length > 30 ? '...' : ''}"
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-[9px] px-1 py-px rounded"
+                      style={c.source === 'manual'
+                        ? { background: 'var(--surface-2)', color: 'var(--text-muted)' }
+                        : { background: 'var(--accent-dim)', color: 'var(--accent-blue)' }}>
+                      {c.source === 'manual' ? '手动' : 'AI'}
+                    </span>
+                    {c.context !== '(全文)' && (
+                      <span className="text-[10px] mono truncate max-w-28"
+                        style={{ color: 'var(--text-muted)' }}>
+                        "{c.context.slice(0, 20)}{c.context.length > 20 ? '...' : ''}"
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] leading-relaxed whitespace-pre-wrap"
                     style={{ color: 'var(--text)' }}>{c.content}</div>
                   <div className="flex items-center justify-between mt-1.5">

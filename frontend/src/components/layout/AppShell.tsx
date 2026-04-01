@@ -66,8 +66,10 @@ export function AppShell() {
             <div className="p-3 space-y-2 shrink-0">
               <div className="flex items-center gap-1">
                 <Select value={activeGraphId ?? ''} onValueChange={selectGraph}>
-                  <SelectTrigger className="h-8 text-xs flex-1">
-                    <SelectValue placeholder="选择图谱..." />
+                  <SelectTrigger className="h-8 text-xs flex-1 min-w-0">
+                    <span className="truncate">
+                      {graphs.find((g) => g.id === activeGraphId)?.name ?? '选择图谱...'}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
                     {graphs.map((g) => (
@@ -89,9 +91,6 @@ export function AppShell() {
                   <span className="text-xs">‹‹</span>
                 </Button>
               </div>
-              <Button variant="outline" size="sm" className="w-full text-xs h-7 border-dashed" onClick={openNewExplore}>
-                + 新探索
-              </Button>
             </div>
 
             <Separator />

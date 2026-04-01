@@ -7,6 +7,7 @@ export interface AiComment {
   context: string
   content: string
   ts: number
+  source?: 'ai' | 'manual'
 }
 
 interface Props {
