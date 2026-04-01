@@ -14,6 +14,7 @@ interface Props {
 export function MilkdownEditor({ value, onChange, onSave }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const crepeRef = useRef<Crepe | null>(null)
+  const readyRef = useRef(false)
   const onChangeRef = useRef(onChange)
   const onSaveRef = useRef(onSave)
   const valueRef = useRef(value)
@@ -23,11 +24,12 @@ export function MilkdownEditor({ value, onChange, onSave }: Props) {
   onSaveRef.current = onSave
   valueRef.current = value
 
+  // Create editor once
   useEffect(() => {
     if (!containerRef.current) return
     let destroyed = false
+    readyRef.current = false
 
-    // All features are enabled by default in Crepe
     const crepe = new Crepe({
       root: containerRef.current,
       defaultValue: valueRef.current,
@@ -40,36 +42,47 @@ export function MilkdownEditor({ value, onChange, onSave }: Props) {
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, md, prev) => {
-        if (suppressRef.current) return
+        if (suppressRef.current || !readyRef.current) return
         if (md !== prev) onChangeRef.current(md)
       })
     })
 
     crepe.create().then(() => {
-      if (destroyed) { crepe.destroy(); return }
+      if (destroyed) {
+        try { crepe.destroy() } catch { /* ignore */ }
+        return
+      }
       crepeRef.current = crepe
+      readyRef.current = true
     }).catch(console.error)
 
     return () => {
       destroyed = true
-      crepeRef.current?.destroy()
+      readyRef.current = false
+      const ref = crepeRef.current
       crepeRef.current = null
+      if (ref) {
+        try { ref.destroy() } catch { /* ignore destroy errors */ }
+      }
     }
   }, [])
 
+  // Sync external value changes
   useEffect(() => {
-    const crepe = crepeRef.current
-    if (!crepe) return
+    if (!readyRef.current || !crepeRef.current) return
     try {
-      const current = crepe.getMarkdown()
+      const current = crepeRef.current.getMarkdown()
       if (value !== current) {
         suppressRef.current = true
-        crepe.editor.action(replaceAll(value))
+        crepeRef.current.editor.action(replaceAll(value))
         suppressRef.current = false
       }
-    } catch { /* editor may not be ready yet */ }
+    } catch {
+      // Editor not ready or destroyed — ignore
+    }
   }, [value])
 
+  // Cmd+S
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
