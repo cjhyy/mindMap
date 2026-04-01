@@ -79,14 +79,20 @@ function TreeNode({ nodeId, nodes, childrenOf, activeNodeId, onSelect, onDelete,
   }, [forceExpandIds, nodeId, children.length])
 
   useEffect(() => {
-    if (isNew && rowRef.current) rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    if (isNew && rowRef.current) {
+      // Delay to avoid interfering with user's current scroll position
+      const timer = setTimeout(() => {
+        rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 300)
+      return () => clearTimeout(timer)
+    }
   }, [isNew])
 
   if (!node) return null
 
   const isActive = activeNodeId === nodeId
-  const statusColor = node.status === 'expanded' ? 'var(--accent-blue)'
-    : node.status === 'explored' ? 'var(--info)' : 'var(--text-muted)'
+  const statusColor = node.status === 'expanded' ? '#3B7DD8'
+    : node.status === 'explored' ? '#7EB8DA' : '#999'
   const mark = node.status === 'expanded' ? '✓' : node.status === 'explored' ? '○' : '·'
 
   async function handleDelete(e: React.MouseEvent) {
@@ -100,9 +106,9 @@ function TreeNode({ nodeId, nodes, childrenOf, activeNodeId, onSelect, onDelete,
   return (
     <div>
       <div ref={rowRef}
-        className={`flex items-center py-1 px-1.5 mx-0.5 rounded transition-all duration-100 ${isNew ? 'node-new-highlight' : ''}`}
+        className={`flex items-center h-7 px-1.5 mx-0.5 rounded transition-all duration-100 overflow-hidden ${isNew ? 'node-new-highlight' : ''}`}
         style={{
-          paddingLeft: `${8 + depth * 16}px`,
+          paddingLeft: `${8 + depth * 14}px`,
           background: isActive ? 'var(--accent-dim)' : undefined,
           borderLeft: isActive ? '2px solid var(--accent-blue)' : '2px solid transparent',
         }}
@@ -112,31 +118,26 @@ function TreeNode({ nodeId, nodes, childrenOf, activeNodeId, onSelect, onDelete,
         <div role="button" tabIndex={0}
           onClick={() => { onSelect(nodeId); if (children.length) setOpen((o) => !o) }}
           onKeyDown={(e) => { if (e.key === 'Enter') { onSelect(nodeId); if (children.length) setOpen((o) => !o) } }}
-          className="flex items-center gap-1.5 flex-1 min-w-0 text-left cursor-pointer"
+          className="flex items-center gap-1 flex-1 min-w-0 text-left cursor-pointer overflow-hidden"
         >
           {children.length > 0 ? (
-            <span className="text-[9px] w-2.5 shrink-0 transition-transform duration-100"
-              style={{ color: 'var(--text-muted)', transform: open ? 'rotate(0)' : 'rotate(-90deg)', display: 'inline-block' }}>▾</span>
-          ) : <span className="w-2.5 shrink-0" />}
+            <span className="text-[9px] w-3 shrink-0 text-center transition-transform duration-100"
+              style={{ color: '#999', transform: open ? 'rotate(0)' : 'rotate(-90deg)', display: 'inline-block' }}>▾</span>
+          ) : <span className="w-3 shrink-0" />}
           <span className="text-[10px] mono shrink-0" style={{ color: statusColor }}>{mark}</span>
-          <span className="text-[12px] truncate" style={{ color: isActive ? 'var(--accent-blue)' : 'var(--text)', fontWeight: isActive ? 500 : 400 }}>
+          <span className="text-[12px] truncate block" style={{ color: isActive ? 'var(--accent-blue)' : 'var(--text)', fontWeight: isActive ? 500 : 400 }}>
             {node.label}
           </span>
-          {node.has_doc && <span className="text-[9px] shrink-0" style={{ opacity: 0.4 }}>📄</span>}
+          {node.has_doc && <span className="text-[9px] shrink-0 opacity-40">📄</span>}
         </div>
 
-        {!isRoot && (
+        {!isRoot && hovered && (
           <div role="button" tabIndex={0} onClick={handleDelete}
             onKeyDown={(e) => { if (e.key === 'Enter') handleDelete(e as unknown as React.MouseEvent) }}
-            className="shrink-0 rounded cursor-pointer transition-all duration-100"
-            style={{
-              color: deleting ? 'var(--warn)' : 'var(--text-muted)',
-              opacity: hovered || deleting ? 1 : 0,
-              pointerEvents: hovered || deleting ? 'auto' : 'none',
-              padding: '1px 4px', fontSize: '10px', marginLeft: '2px',
-            }}
+            className="shrink-0 rounded cursor-pointer text-[10px] px-1 ml-0.5 transition-colors"
+            style={{ color: deleting ? 'var(--warn)' : '#999' }}
             onMouseEnter={(e) => { if (!deleting) (e.currentTarget as HTMLElement).style.color = 'var(--error)' }}
-            onMouseLeave={(e) => { if (!deleting) (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)' }}
+            onMouseLeave={(e) => { if (!deleting) (e.currentTarget as HTMLElement).style.color = '#999' }}
           >{deleting ? '…' : '✕'}</div>
         )}
       </div>

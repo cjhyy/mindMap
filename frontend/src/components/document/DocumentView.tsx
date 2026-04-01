@@ -393,7 +393,6 @@ function DocArea({ graphId, nodeId, node, doc, loading, onSaved }: {
         {/* Editor */}
         <div className="flex-1 min-w-0 overflow-y-auto">
           <MilkdownEditor
-            key={nodeId}
             value={content}
             onChange={onEditorChange}
             onSave={save}
