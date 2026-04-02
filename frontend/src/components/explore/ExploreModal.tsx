@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api, streamChat } from '../../api/client'
 import type { UserProfile } from '../../api/client'
 import { useGraphStore } from '../../stores/graphStore'
 import { useOperation } from '../../hooks/useOperation'
 
 function parseReady(text: string): UserProfile | null {
-  const match = text.match(/READY::(\{.+\})/s)
+  // Match READY:: at start of line or after newline, with JSON object
+  const match = text.match(/READY::(\{[\s\S]+\})\s*$/)
   if (!match) return null
   try { return JSON.parse(match[1]) as UserProfile } catch { return null }
 }
 
 function stripReady(text: string): string {
-  return text.replace(/\nREADY::\{.+\}/s, '').trim()
+  return text.replace(/\n?READY::(\{[\s\S]+\})\s*$/, '').trim()
 }
 
 export function ExploreModal() {
@@ -159,13 +162,21 @@ export function ExploreModal() {
             const isUser = msg.role === 'user'
             return (
               <div key={i} className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}>
-                <div className="max-w-[85%] px-3.5 py-2 rounded-lg text-[13px] leading-relaxed whitespace-pre-wrap"
-                  style={isUser
-                    ? { background: 'var(--accent)', color: 'var(--bg)' }
-                    : { background: 'var(--surface-2)', color: 'var(--text)' }
-                  }>
-                  {msg.content || <span style={{ opacity: 0.3 }}>···</span>}
-                </div>
+                {isUser ? (
+                  <div className="max-w-[85%] px-3.5 py-2 rounded-lg text-[13px] leading-relaxed whitespace-pre-wrap"
+                    style={{ background: 'var(--accent-blue)', color: 'white' }}>
+                    {msg.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[85%] px-3.5 py-2 rounded-lg chat-markdown text-[13px] leading-relaxed"
+                    style={{ background: 'var(--surface-2)', color: 'var(--text)' }}>
+                    {msg.content ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    ) : (
+                      <span style={{ opacity: 0.3 }}>···</span>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}

@@ -329,8 +329,13 @@ function ExplorePanel() {
       useGraphStore.setState((s) => ({
         chatMessages: [...s.chatMessages, { role: 'assistant' as const, content: '' }],
       }))
-      const memoryCtx = graphMemory?.summary
-        ? [{ role: 'user' as const, content: `[图谱上下文] ${graphMemory.summary}` }]
+      const contextParts: string[] = []
+      if (graphMemory?.summary) contextParts.push(graphMemory.summary)
+      if (graphMemory?.key_points?.length) contextParts.push(`模块: ${graphMemory.key_points.join('、')}`)
+      const profile = graphMemory?.user_profile as Record<string, unknown> | undefined
+      if (profile?.scope) contextParts.push(`探索范围: ${(profile.scope as string[]).join('、')}`)
+      const memoryCtx: ChatMsg[] = contextParts.length > 0
+        ? [{ role: 'user' as const, content: `[图谱上下文] ${contextParts.join(' | ')}` }]
         : []
       const history: ChatMsg[] = [...memoryCtx, ...useGraphStore.getState().chatMessages.slice(-10)]
       let full = ''
