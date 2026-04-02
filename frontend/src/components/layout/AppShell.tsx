@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
-import { api } from '../../api/client'
+import { useEffect, useRef, useState } from 'react'
+import { api, streamChat } from '../../api/client'
+import type { ChatMsg } from '../../api/client'
 import { useGraphStore } from '../../stores/graphStore'
+import { useOperation } from '../../hooks/useOperation'
 import { NodeTree } from '../nodes/NodeTree'
 import { AgentBar } from '../agent/AgentBar'
 import { DocumentView } from '../document/DocumentView'
@@ -272,19 +274,88 @@ function DocsPanel() {
   )
 }
 
-/* ── Explore panel ── */
+/* ── Explore panel: chat + progress ── */
 function ExplorePanel() {
-  const { progressLog, isStreaming, activeGraph } = useGraphStore()
+  const {
+    activeGraphId, activeGraph, chatMessages, chatLoading, isStreaming, progressLog,
+    setChatLoading, saveCurrentChat, graphMemory,
+  } = useGraphStore()
+  const { run } = useOperation()
+  const [input, setInput] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
+
   const nodes = activeGraph?.graph_data?.nodes ?? {}
   const nodeCount = Object.keys(nodes).length
   const exploredCount = Object.values(nodes).filter((n) => n.status !== 'unexplored').length
   const docCount = Object.values(nodes).filter((n) => n.has_doc).length
   const lastPhase = [...progressLog].reverse().find((e) => e.type === 'phase')
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, progressLog, isStreaming])
+
+  async function sendChat() {
+    const text = input.trim()
+    if (!text || chatLoading || !activeGraphId) return
+    setInput('')
+
+    // Add user message
+    useGraphStore.setState((s) => ({
+      chatMessages: [...s.chatMessages, { role: 'user' as const, content: text }],
+    }))
+
+    // If it's an instruction to modify the graph, send to agent
+    const isAgentCommand = /展开|添加|删除|生成|补充|调整|修改|增加|移除|重写|细化|扩展/.test(text)
+
+    if (isAgentCommand && activeGraphId) {
+      // Use agentQuery to let agent modify the graph
+      useGraphStore.setState((s) => ({
+        chatMessages: [...s.chatMessages, { role: 'assistant' as const, content: '正在执行...' }],
+      }))
+      saveCurrentChat()
+      await run(() => api.agentQuery(activeGraphId, text), () => {
+        useGraphStore.setState((s) => {
+          const msgs = [...s.chatMessages]
+          const lastAssistant = msgs.findLastIndex((m) => m.content === '正在执行...')
+          if (lastAssistant >= 0) msgs[lastAssistant] = { role: 'assistant', content: '已完成操作。' }
+          return { chatMessages: msgs }
+        })
+        saveCurrentChat()
+      })
+    } else {
+      // Regular chat — stream response
+      setChatLoading(true)
+      useGraphStore.setState((s) => ({
+        chatMessages: [...s.chatMessages, { role: 'assistant' as const, content: '' }],
+      }))
+      const memoryCtx = graphMemory?.summary
+        ? [{ role: 'user' as const, content: `[图谱上下文] ${graphMemory.summary}` }]
+        : []
+      const history: ChatMsg[] = [...memoryCtx, ...useGraphStore.getState().chatMessages.slice(-10)]
+      let full = ''
+      try {
+        for await (const chunk of streamChat(history)) {
+          full += chunk
+          useGraphStore.setState((s) => {
+            const msgs = [...s.chatMessages]
+            msgs[msgs.length - 1] = { role: 'assistant', content: full }
+            return { chatMessages: msgs }
+          })
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setChatLoading(false)
+        saveCurrentChat()
+      }
+    }
+  }
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
+      {/* Stats bar */}
       {nodeCount > 0 && (
-        <div className="px-3 py-2 border-b space-y-1.5">
+        <div className="px-3 py-2 border-b space-y-1.5 shrink-0">
           {isStreaming && lastPhase && (
             <div className="flex items-center gap-1.5">
               <span className="animate-subtle-pulse text-[7px] text-primary">●</span>
@@ -305,31 +376,79 @@ function ExplorePanel() {
         </div>
       )}
 
-      <div className="px-3 py-2 flex flex-col gap-1">
-        {progressLog.length === 0 && !isStreaming && (
+      {/* Messages + progress log */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+        {/* Chat history */}
+        {chatMessages.length === 0 && progressLog.length === 0 && !isStreaming && (
           <p className="text-xs text-center py-6 text-muted-foreground">
-            {nodeCount === 0 ? '开始探索后显示进度' : '暂无进度'}
+            {nodeCount === 0 ? '开始探索后显示进度' : '发消息继续调整图谱'}
           </p>
         )}
-        {progressLog.map((entry, i) => (
-          <div key={i} className={`text-[10px] mono flex items-start gap-1.5 ${
-            entry.type === 'status' || entry.type === 'phase' ? 'text-primary'
-            : entry.type === 'nodes' ? 'text-foreground'
-            : entry.type === 'turn' ? 'text-muted-foreground'
-            : 'text-chart-1'
-          }`}>
-            <span className="shrink-0 opacity-50">
-              {entry.type === 'tool' ? '⚙' : entry.type === 'turn' ? '↩' : entry.type === 'phase' ? '▸' : entry.type === 'nodes' ? '+' : '✓'}
-            </span>
-            <span className={entry.type === 'phase' ? 'font-semibold' : ''}>{entry.text}</span>
+        {chatMessages.map((msg, i) => (
+          <div key={`msg-${i}`} className={`mb-2 ${msg.role === 'user' ? 'text-right' : ''}`}>
+            <div className={`inline-block max-w-[90%] px-2.5 py-1.5 rounded-lg text-[11px] leading-relaxed whitespace-pre-wrap ${
+              msg.role === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-secondary-foreground'
+            }`}>
+              {msg.content || <span className="opacity-40">···</span>}
+            </div>
           </div>
         ))}
-        {isStreaming && (
-          <div className="flex items-center gap-1.5 text-[10px] mono mt-1 text-orange-500">
-            <span className="animate-spin-slow">◎</span><span>运行中...</span>
+
+        {/* Progress entries (inline with chat) */}
+        {progressLog.length > 0 && (
+          <div className="mt-2 pt-2 border-t space-y-0.5">
+            {progressLog.slice(-20).map((entry, i) => (
+              <div key={`prog-${i}`} className={`text-[10px] mono flex items-start gap-1.5 ${
+                entry.type === 'status' || entry.type === 'phase' ? 'text-primary'
+                : entry.type === 'nodes' ? 'text-foreground'
+                : entry.type === 'turn' ? 'text-muted-foreground'
+                : 'text-chart-1'
+              }`}>
+                <span className="shrink-0 opacity-50">
+                  {entry.type === 'tool' ? '⚙' : entry.type === 'turn' ? '↩' : entry.type === 'phase' ? '▸' : entry.type === 'nodes' ? '+' : '✓'}
+                </span>
+                <span className={entry.type === 'phase' ? 'font-semibold' : ''}>{entry.text}</span>
+              </div>
+            ))}
+            {isStreaming && (
+              <div className="flex items-center gap-1.5 text-[10px] mono mt-1 text-orange-500">
+                <span className="animate-spin-slow">◎</span><span>运行中...</span>
+              </div>
+            )}
           </div>
         )}
+
+        {chatLoading && (
+          <div className="mt-2 text-[11px] text-muted-foreground animate-subtle-pulse">思考中...</div>
+        )}
+        <div ref={bottomRef} />
       </div>
+
+      {/* Input */}
+      {activeGraphId && (
+        <div className="px-3 py-2 border-t shrink-0">
+          <div className="flex items-end gap-1.5 rounded-md px-2 py-1.5"
+            style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+              placeholder={isStreaming ? 'Agent 运行中...' : '调整图谱...'}
+              disabled={isStreaming}
+              rows={1}
+              className="flex-1 bg-transparent outline-none resize-none text-[11px] leading-relaxed disabled:opacity-40"
+              style={{ color: 'var(--text)', maxHeight: '60px' }}
+            />
+            <button onClick={sendChat} disabled={!input.trim() || chatLoading || isStreaming}
+              className="shrink-0 w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold disabled:opacity-20 text-white"
+              style={{ background: 'var(--accent-blue)' }}>
+              ↑
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
