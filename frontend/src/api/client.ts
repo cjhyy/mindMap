@@ -130,11 +130,20 @@ export const api = {
 
 export interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
-export async function* streamChat(messages: ChatMsg[]): AsyncGenerator<string> {
+export const AI_MODELS = [
+  { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
+  { id: 'anthropic/claude-haiku-4', label: 'Claude Haiku 4' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o' },
+  { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+  { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash' },
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
+] as const
+
+export async function* streamChat(messages: ChatMsg[], model?: string): AsyncGenerator<string> {
   const res = await fetch(`${BASE}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, model }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const reader = res.body!.getReader()

@@ -759,13 +759,23 @@ async def assess_node_depth(node_id: str) -> str:
 async def generate_node_doc(node_id: str, content: str) -> str:
     """Save a comprehensive Markdown document for a knowledge node.
 
-    The content should be a well-structured article covering:
+    The content should be a well-structured article. Adapt the structure based on the topic:
+
+    For technical/programming topics:
     - Overview / definition
     - Core concepts and principles
-    - Code examples (if applicable)
-    - Practical tips and best practices
+    - Code examples and implementation guide
+    - Best practices and common pitfalls
     - Related knowledge points
-    - References and resources
+    - Learning resources and tools
+
+    For non-technical topics (humanities, arts, social sciences, etc.):
+    - Overview / definition
+    - Core concepts and principles
+    - Real-world cases and applications
+    - Practical tips and methodology
+    - Related knowledge points
+    - Further reading and references
 
     Use YAML frontmatter format at the top of the document.
 

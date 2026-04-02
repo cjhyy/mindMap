@@ -26,16 +26,24 @@ export function ExploreModal() {
   const [input, setInput] = useState('')
   const [exploring, setExploring] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const initRef = useRef(false)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages, chatLoading])
 
-  // Auto-start conversation
+  // Init conversation with static welcome message
   useEffect(() => {
+    if (initRef.current) return
+    initRef.current = true
     clearChat()
     setUserProfile(null)
-    streamAssistant([{ role: 'user', content: '你好，我想开始探索一个知识领域' }])
+    useGraphStore.setState({
+      chatMessages: [{
+        role: 'assistant',
+        content: '你好！我可以帮你探索任何知识领域。\n\n请告诉我：\n1. 你想探索什么主题？\n2. 你的背景和基础如何？\n3. 你的学习目标是什么？\n\n比如："我想系统学习机器学习，有 Python 基础，目标是能独立完成项目"',
+      }],
+    })
   }, [])
 
   async function streamAssistant(history: { role: 'user' | 'assistant'; content: string }[]) {

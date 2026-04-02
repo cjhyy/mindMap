@@ -43,14 +43,17 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    model: str | None = None
 
+
+DEFAULT_CHAT_MODEL = "anthropic/claude-sonnet-4"
 
 @router.post("/api/chat")
 async def chat(req: ChatRequest):
     """Stream a chat response for knowledge scope clarification."""
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
     base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    model = "anthropic/claude-opus-4.6"
+    model = req.model or DEFAULT_CHAT_MODEL
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages += [{"role": m.role, "content": m.content} for m in req.messages]

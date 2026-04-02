@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api, streamChat } from '../../api/client'
 import type { ChatMsg } from '../../api/client'
 import { useGraphStore } from '../../stores/graphStore'
@@ -385,14 +387,20 @@ function ExplorePanel() {
           </p>
         )}
         {chatMessages.map((msg, i) => (
-          <div key={`msg-${i}`} className={`mb-2 ${msg.role === 'user' ? 'text-right' : ''}`}>
-            <div className={`inline-block max-w-[90%] px-2.5 py-1.5 rounded-lg text-[11px] leading-relaxed whitespace-pre-wrap ${
-              msg.role === 'user'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground'
-            }`}>
-              {msg.content || <span className="opacity-40">···</span>}
-            </div>
+          <div key={`msg-${i}`} className={`mb-2.5 ${msg.role === 'user' ? 'text-right' : ''}`}>
+            {msg.role === 'user' ? (
+              <div className="inline-block max-w-[90%] px-2.5 py-1.5 rounded-lg text-[11px] leading-relaxed whitespace-pre-wrap bg-primary text-primary-foreground">
+                {msg.content}
+              </div>
+            ) : (
+              <div className="chat-markdown text-[11px] leading-relaxed">
+                {msg.content ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                ) : (
+                  <span className="opacity-40">···</span>
+                )}
+              </div>
+            )}
           </div>
         ))}
 

@@ -16,7 +16,7 @@ import { common, createLowlight } from 'lowlight'
 import { marked } from 'marked'
 import 'katex/dist/katex.min.css'
 import TurndownService from 'turndown'
-import { streamChat } from '../../api/client'
+import { streamChat, AI_MODELS } from '../../api/client'
 import type { ChatMsg } from '../../api/client'
 import type { AiComment } from './AiPanel'
 
@@ -61,6 +61,7 @@ export function TiptapEditor({ value, onChange, onSave, onComment }: Props) {
   const [aiStreaming, setAiStreaming] = useState(false)
   const [aiResult, setAiResult] = useState('')
   const [aiInput, setAiInput] = useState('')
+  const [aiModel, setAiModel] = useState(AI_MODELS[0].id)
   const aiResultRef = useRef('')
   const abortRef = useRef(false)
   const aiInputRef = useRef<HTMLInputElement>(null)
@@ -270,7 +271,7 @@ export function TiptapEditor({ value, onChange, onSave, onComment }: Props) {
       { role: 'user', content: prompt },
     ]
     try {
-      for await (const chunk of streamChat(messages)) {
+      for await (const chunk of streamChat(messages, aiModel)) {
         if (abortRef.current) break
         aiResultRef.current += chunk
         setAiResult(aiResultRef.current)
@@ -423,6 +424,8 @@ export function TiptapEditor({ value, onChange, onSave, onComment }: Props) {
           onClose={closeAi}
           presets={AI_PRESETS}
           selectedText={selectedTextRef.current}
+          model={aiModel}
+          onModelChange={setAiModel}
         />
       )}
     </div>
@@ -430,7 +433,7 @@ export function TiptapEditor({ value, onChange, onSave, onComment }: Props) {
 }
 
 /* ── AI Floating Panel ── */
-function AiFloatingPanel({ streaming, result, input, inputRef, onInputChange, onPreset, onCustom, onReplace, onInsertBelow, onRetry, onStop, onClose, presets, selectedText }: {
+function AiFloatingPanel({ streaming, result, input, inputRef, onInputChange, onPreset, onCustom, onReplace, onInsertBelow, onRetry, onStop, onClose, presets, selectedText, model, onModelChange }: {
   streaming: boolean
   result: string
   input: string
@@ -445,6 +448,8 @@ function AiFloatingPanel({ streaming, result, input, inputRef, onInputChange, on
   onClose: () => void
   presets: typeof AI_PRESETS
   selectedText: string
+  model: string
+  onModelChange: (m: string) => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const resultEndRef = useRef<HTMLDivElement>(null)
@@ -465,6 +470,15 @@ function AiFloatingPanel({ streaming, result, input, inputRef, onInputChange, on
       <div className="ai-float-header">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium" style={{ color: 'var(--accent-blue)' }}>✦ AI</span>
+          <select
+            value={model}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="ai-model-select"
+          >
+            {AI_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
           {selectedText && (
             <span className="text-[10px] px-1.5 py-0.5 rounded mono"
               style={{ background: 'var(--accent-dim)', color: 'var(--accent-blue)' }}>
