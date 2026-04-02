@@ -67,7 +67,9 @@ export function ExploreModal() {
           return { chatMessages: msgs }
         })
       }
+      console.log('[ExploreModal] stream done, full length:', full.length, 'last 100:', full.slice(-100))
       const profile = parseReady(full)
+      console.log('[ExploreModal] parseReady result:', profile)
       if (profile) {
         setUserProfile(profile)
         useGraphStore.setState((s) => {
@@ -121,6 +123,25 @@ export function ExploreModal() {
       setExploring(false)
     }
   }
+
+  // Fallback: if READY:: is in messages but userProfile not set, parse it
+  useEffect(() => {
+    if (userProfile) return
+    const lastAssistant = [...chatMessages].reverse().find((m) => m.role === 'assistant')
+    if (!lastAssistant) return
+    const profile = parseReady(lastAssistant.content)
+    if (profile) {
+      console.log('[ExploreModal] fallback parseReady found profile:', profile)
+      setUserProfile(profile)
+      // Also strip the READY:: from the displayed message
+      useGraphStore.setState((s) => {
+        const msgs = [...s.chatMessages]
+        const idx = msgs.lastIndexOf(lastAssistant)
+        if (idx >= 0) msgs[idx] = { ...msgs[idx], content: stripReady(msgs[idx].content) }
+        return { chatMessages: msgs }
+      })
+    }
+  }, [chatMessages, userProfile])
 
   function toggleScope(s: string) {
     setCheckedScope(checkedScope.includes(s) ? checkedScope.filter((x) => x !== s) : [...checkedScope, s])
