@@ -20,13 +20,19 @@ export function DocumentView({ graphId }: { graphId: string }) {
   const [metaOpen, setMetaOpen] = useState(false)
 
   const prevStreamingRef = useRef(isStreaming)
+  const prevNodeIdRef = useRef(activeNodeId)
   useEffect(() => {
     if (!activeNodeId) { setNode(null); setDoc(null); return }
-    // Load on node change, or when streaming just finished (not on every streaming tick)
+
+    const nodeChanged = activeNodeId !== prevNodeIdRef.current
     const streamingJustEnded = prevStreamingRef.current && !isStreaming
     prevStreamingRef.current = isStreaming
-    if (!streamingJustEnded && doc !== null && node !== null) return
+    prevNodeIdRef.current = activeNodeId
 
+    // Always reload on node change; otherwise only reload when streaming just ended
+    if (!nodeChanged && !streamingJustEnded && doc !== null && node !== null) return
+
+    if (nodeChanged) { setNode(null); setDoc(null) }
     api.getNode(graphId, activeNodeId).then(setNode).catch(console.error)
     setLoadingDoc(true)
     api.getNodeDoc(graphId, activeNodeId)
