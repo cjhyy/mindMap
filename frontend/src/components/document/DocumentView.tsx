@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../api/client'
 import { useGraphStore } from '../../stores/graphStore'
 import { useOperation } from '../../hooks/useOperation'
@@ -19,8 +19,14 @@ export function DocumentView({ graphId }: { graphId: string }) {
   const [loadingDoc, setLoadingDoc] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
 
+  const prevStreamingRef = useRef(isStreaming)
   useEffect(() => {
     if (!activeNodeId) { setNode(null); setDoc(null); return }
+    // Load on node change, or when streaming just finished (not on every streaming tick)
+    const streamingJustEnded = prevStreamingRef.current && !isStreaming
+    prevStreamingRef.current = isStreaming
+    if (!streamingJustEnded && doc !== null && node !== null) return
+
     api.getNode(graphId, activeNodeId).then(setNode).catch(console.error)
     setLoadingDoc(true)
     api.getNodeDoc(graphId, activeNodeId)
@@ -245,7 +251,7 @@ function DocArea({ graphId, nodeId, node, doc, loading, onSaved }: {
   const [aiSelection, setAiSelection] = useState('')
   const [aiPos, setAiPos] = useState({ x: 0, y: 0 })
   const [comments, setComments] = useState<AiComment[]>([])
-  const { isStreaming } = useGraphStore()
+  const { isStreaming, graphMemory } = useGraphStore()
   const { run } = useOperation()
 
   useEffect(() => { setDirty(false); setGenerating(false); setAiOpen(false); setComments([]) }, [nodeId])
@@ -293,12 +299,41 @@ function DocArea({ graphId, nodeId, node, doc, loading, onSaved }: {
     finally { setSaving(false) }
   }
 
+  function buildDocPrompt() {
+    const profile = graphMemory?.user_profile as { topic?: string; background?: string; goal?: string } | undefined
+    const topic = profile?.topic ?? ''
+    const bg = profile?.background ?? ''
+
+    // Detect if topic is code/tech related
+    const techKeywords = ['编程', '代码', '开发', '算法', '框架', '前端', '后端', '数据库', 'API', 'Python', 'Java', 'JavaScript', 'React', 'AI', '机器学习', '深度学习', 'DevOps', '架构', '计算机', '软件', 'Linux', '运维']
+    const isTech = techKeywords.some(k => topic.includes(k) || bg.includes(k))
+
+    const sections = [
+      '概述与定义',
+      '核心概念与原理（详细解释）',
+      '关键要点（每个 3-5 句话展开）',
+      isTech ? '代码示例与实践指南' : '实际案例与应用场景',
+      '与其他知识点的关联',
+      isTech ? '推荐学习资源与工具' : '延伸阅读与参考资料',
+    ]
+
+    const bgHint = bg ? `\n用户背景：${bg}，请据此调整内容深度和用语风格。` : ''
+
+    return (
+      `为节点「${node.label}」(node_id: ${nodeId}) 生成一篇**详细深入**的知识文档。` +
+      `${bgHint}\n` +
+      `要求：1. 先用 google_search 搜索相关资料 2. 再调用 generate_node_doc 生成文档。\n` +
+      `文档结构：\n${sections.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n` +
+      `篇幅 800-1500 字。`
+    )
+  }
+
   async function generateWithAgent() {
     if (generating || isStreaming) return
     setGenerating(true)
     try {
       await run(
-        () => api.agentQuery(graphId, `为节点「${node.label}」(node_id: ${nodeId}) 生成一篇**详细深入**的知识文档。要求：1. 先用 search_knowledge 搜索相关资料 2. 再调用 generate_node_doc 生成文档。文档要包含：概述、核心原理（详细解释）、关键概念（每个3-5句）、代码示例或实践指南、与其他知识点的关系、推荐学习资源。篇幅 800-1500 字。`),
+        () => api.agentQuery(graphId, buildDocPrompt()),
         () => {
           api.getNodeDoc(graphId, nodeId).then((d) => { onSaved(d.content); setDraft(d.content) }).catch(() => {})
           setGenerating(false)

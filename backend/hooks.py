@@ -19,6 +19,11 @@ MUTATION_TOOLS = {
 # (delete_node is allowed — LLM uses it for dedup in final turns)
 BLOCKED_TOOLS: set[str] = set()
 
+# Track consecutive read-only tool calls to detect stalling
+_readonly_streak = 0
+_READONLY_TOOLS = {"get_subtree", "get_graph_summary", "search_knowledge"}
+_MAX_READONLY_STREAK = 3
+
 # ── File logger: one log file per agent run ──
 
 LOG_DIR = Path(__file__).parent / "logs" / "agent_runs"
@@ -47,7 +52,8 @@ def _get_file_logger() -> logging.Logger:
 
 def reset_file_logger():
     """Start a new log file (called at the beginning of each agent operation)."""
-    global _file_logger, _current_log_path
+    global _file_logger, _current_log_path, _readonly_streak
+    _readonly_streak = 0
     if _file_logger:
         for h in _file_logger.handlers:
             h.close()
@@ -91,10 +97,28 @@ def log_tool_end(ctx: HookContext, original_fn):
 
 @hooks.register("on_tool_filter", priority=10)
 def block_wasteful_tools(ctx: HookContext, original_fn):
-    """Filter out tools the agent shouldn't call."""
+    """Filter out tools the agent shouldn't call, including stalling read-only loops."""
+    global _readonly_streak
     batch = original_fn(ctx)
     if not batch or not isinstance(batch, list):
         return batch
+
+    # Check if ALL calls in this batch are read-only
+    tool_names = []
+    for call in batch:
+        name = getattr(call, 'tool_name', '') or (call.get('tool_name', '') if isinstance(call, dict) else '')
+        tool_names.append(name)
+
+    all_readonly = all(n in _READONLY_TOOLS for n in tool_names if n)
+    if all_readonly and tool_names:
+        _readonly_streak += 1
+    else:
+        _readonly_streak = 0
+
+    if _readonly_streak > _MAX_READONLY_STREAK:
+        flog(f"T{ctx.turn_number} ⊘ BLOCKED read-only stall ({_readonly_streak} consecutive turns of {tool_names})")
+        return []
+
     filtered = []
     for call in batch:
         tool_name = getattr(call, 'tool_name', '') or (call.get('tool_name', '') if isinstance(call, dict) else '')
@@ -136,6 +160,10 @@ def format_mindmap_result(ctx: HookContext, original_fn):
             text = content[0].get("text", "") if content else ""
             if len(text) > 500:
                 text = text[:500] + "..."
+            # After mutation, append compact key-map so agent sees latest state
+            keymap = _build_compact_keymap()
+            if keymap:
+                return f"[{tool}] OK ({dur}): {text}\n\n[图谱实时状态]\n{keymap}"
             return f"[{tool}] OK ({dur}): {text}"
 
     return original_fn(ctx)
@@ -146,44 +174,46 @@ def inject_graph_state(ctx: HookContext, original_fn):
     """Inject a compact key-map of the graph into system prompt."""
     prompt = original_fn(ctx)
 
+    keymap = _build_compact_keymap()
+    if keymap:
+        prompt += f"\n\n[当前图谱状态]\n{keymap}"
+        prompt += (
+            "\n\n[重要规则]"
+            "\n- 完成任务后立即停止，不要反复调用 get_subtree 或 get_graph_summary 来确认。"
+            "\n- 如果你已经完成了所有要求的操作（添加节点、生成文档等），直接输出总结并结束。"
+            "\n- 不要连续多次调用只读工具（get_subtree、get_graph_summary），一次足够。"
+        )
+        flog(f"[Graph State]\n{keymap}")
+
+    return prompt
+
+
+def _build_compact_keymap() -> str:
+    """Build a compact key-map string from the current graph file."""
     try:
         from backend.tools.mindmap_manager_server import _graph_path
-        graph_path = _graph_path
-    except ImportError:
-        graph_path = Path(__file__).parent / "data" / "knowledge_graph.json"
-
-    if not graph_path.exists():
-        return prompt
-
-    try:
-        data = json.loads(graph_path.read_text(encoding="utf-8"))
+        if not _graph_path.exists():
+            return ""
+        data = json.loads(_graph_path.read_text(encoding="utf-8"))
         nodes = data.get("nodes", {})
         if not nodes:
-            return prompt
-
+            return ""
         edges = data.get("edges", {})
-        graph_name = data.get("name", "Untitled")
-
-        cross_edges = sum(1 for e in edges.values() if e.get("edge_type") != "parent_child")
-        docs_count = sum(1 for n in nodes.values() if n.get("has_doc"))
+        docs = sum(1 for n in nodes.values() if n.get("has_doc"))
         unexplored = sum(1 for n in nodes.values() if n.get("status") == "unexplored")
-
-        root_id = data.get("root_node_id")
-        lines = [
-            f"\n[当前图谱] {graph_name}",
-            f"节点:{len(nodes)} 边:{len(edges)} 跨域连接:{cross_edges} 文档:{docs_count} 未探索:{unexplored}",
-            "",
-        ]
+        no_doc = sum(1 for n in nodes.values() if not n.get("has_doc") and n.get("level", 0) >= 1)
 
         children_of: dict[str, list] = {}
         for e in edges.values():
             if e.get("edge_type") == "parent_child":
-                pid = e.get("source_id", "")
-                children_of.setdefault(pid, []).append(e.get("target_id", ""))
+                children_of.setdefault(e["source_id"], []).append(e["target_id"])
 
-        def render_tree(nid: str, depth: int) -> None:
+        lines = [f"节点:{len(nodes)} 文档:{docs} 未探索:{unexplored} 缺文档:{no_doc}"]
+        root_id = data.get("root_node_id")
+
+        def render(nid: str, depth: int) -> None:
             node = nodes.get(nid)
-            if not node:
+            if not node or depth > 3:
                 return
             indent = "  " * depth
             label = node.get("label", "?")
@@ -192,26 +222,18 @@ def inject_graph_state(ctx: HookContext, original_fn):
             mark = "✓" if status == "expanded" else ("○" if status == "explored" else "·")
             doc_mark = " 📄" if has_doc else ""
             lines.append(f"{indent}{mark} {label}{doc_mark}")
-            for child_id in children_of.get(nid, []):
-                render_tree(child_id, depth + 1)
+            for cid in children_of.get(nid, []):
+                render(cid, depth + 1)
 
         if root_id:
-            render_tree(root_id, 0)
+            render(root_id, 0)
         else:
             for nid, n in nodes.items():
                 if not n.get("parent_id"):
-                    render_tree(nid, 0)
-
-        graph_state = "\n".join(lines)
-        prompt += graph_state
-
-        # Also log the graph state to file
-        flog(f"[Graph State]\n{graph_state}")
-
+                    render(nid, 0)
+        return "\n".join(lines)
     except Exception:
-        pass
-
-    return prompt
+        return ""
 
 
 def _summarize_result(tool: str, result: dict) -> str:

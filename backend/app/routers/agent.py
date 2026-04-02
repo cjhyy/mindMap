@@ -110,9 +110,25 @@ async def agent_fill_docs(graph_id: str):
     ]
     node_list = "\n".join(f"- {n.label}（node_id: {n.id}）" for n in no_doc_items[:30])
 
+    # Load user profile to adapt doc style
+    memory = graph_service.get_memory(graph_id)
+    profile = memory.get("user_profile", {})
+    topic = profile.get("topic", "")
+    bg = profile.get("background", "")
+    tech_keywords = ["编程", "代码", "开发", "算法", "框架", "前端", "后端", "数据库",
+                     "API", "Python", "Java", "JavaScript", "React", "AI", "机器学习",
+                     "深度学习", "DevOps", "架构", "计算机", "软件", "Linux", "运维"]
+    is_tech = any(k in topic or k in bg for k in tech_keywords)
+
+    style_hint = ""
+    if bg:
+        style_hint = f"\n用户背景：{bg}，请据此调整内容深度和用语风格。"
+    if not is_tech:
+        style_hint += "\n注意：该主题不涉及编程，不要包含代码示例，改为使用实际案例和应用场景说明。"
+
     task = (
         f"⚠ 忽略 system prompt 中的阶段规划。本次任务只有一个目标：生成文档。\n\n"
-        f"请为以下 {len(no_doc_items)} 个节点生成文档（每篇 300-500 字）。\n"
+        f"请为以下 {len(no_doc_items)} 个节点生成文档（每篇 300-500 字）。{style_hint}\n"
         f"每个 turn 调用 `generate_node_doc`，不要调用 `add_node`、`add_nodes_batch`、`add_edge`、`delete_node`。\n"
         f"不要调用 `get_graph_summary`、`get_subtree`，直接生成文档。\n\n"
         f"节点列表：\n{node_list}"
@@ -144,9 +160,16 @@ async def agent_auto(graph_id: str):
         if unexplored > 0:
             task = f"继续展开 {unexplored} 个未探索节点，用 add_nodes_batch 批量添加子节点，然后用 update_node 标记状态"
         elif no_doc > 0:
+            no_doc_nodes = sorted(
+                (n for n in g.nodes.values() if not n.has_doc and n.level >= 1),
+                key=lambda n: n.level,
+            )
+            node_list = "\n".join(f"- {n.label}（node_id: {n.id}）" for n in no_doc_nodes[:30])
             task = (
-                f"⚠ 跳过阶段一二，直接进入阶段三。\n"
-                f"为 {no_doc} 个缺文档的节点生成文档，每个 turn 调用 generate_node_doc"
+                f"⚠ 跳过阶段一二，直接进入阶段三：生成文档。\n"
+                f"为以下 {len(no_doc_nodes)} 个节点生成文档。"
+                f"每个 turn 同时调用多次 generate_node_doc（3-5 个并行），加快速度。\n\n"
+                f"节点列表：\n{node_list}"
             )
         else:
             task = "图谱已完善。用 get_subtree 检查结构，去重，补漏，更新节点状态"
