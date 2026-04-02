@@ -276,7 +276,7 @@ function DocsPanel() {
   )
 }
 
-/* ── Explore panel: chat + progress ── */
+/* ── Explore panel: progress on top, chat collapsed/expandable ── */
 function ExplorePanel() {
   const {
     activeGraphId, activeGraph, chatMessages, chatLoading, isStreaming, progressLog,
@@ -284,7 +284,9 @@ function ExplorePanel() {
   } = useGraphStore()
   const { run } = useOperation()
   const [input, setInput] = useState('')
+  const [chatPopup, setChatPopup] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const popupBottomRef = useRef<HTMLDivElement>(null)
 
   const nodes = activeGraph?.graph_data?.nodes ?? {}
   const nodeCount = Object.keys(nodes).length
@@ -294,23 +296,21 @@ function ExplorePanel() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages, progressLog, isStreaming])
+    popupBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, chatLoading])
 
   async function sendChat() {
     const text = input.trim()
     if (!text || chatLoading || !activeGraphId) return
     setInput('')
 
-    // Add user message
     useGraphStore.setState((s) => ({
       chatMessages: [...s.chatMessages, { role: 'user' as const, content: text }],
     }))
 
-    // If it's an instruction to modify the graph, send to agent
     const isAgentCommand = /展开|添加|删除|生成|补充|调整|修改|增加|移除|重写|细化|扩展/.test(text)
 
     if (isAgentCommand && activeGraphId) {
-      // Use agentQuery to let agent modify the graph
       useGraphStore.setState((s) => ({
         chatMessages: [...s.chatMessages, { role: 'assistant' as const, content: '正在执行...' }],
       }))
@@ -318,14 +318,13 @@ function ExplorePanel() {
       await run(() => api.agentQuery(activeGraphId, text), () => {
         useGraphStore.setState((s) => {
           const msgs = [...s.chatMessages]
-          const lastAssistant = msgs.findLastIndex((m) => m.content === '正在执行...')
-          if (lastAssistant >= 0) msgs[lastAssistant] = { role: 'assistant', content: '已完成操作。' }
+          const lastIdx = msgs.findLastIndex((m) => m.content === '正在执行...')
+          if (lastIdx >= 0) msgs[lastIdx] = { role: 'assistant', content: '已完成操作。' }
           return { chatMessages: msgs }
         })
         saveCurrentChat()
       })
     } else {
-      // Regular chat — stream response
       setChatLoading(true)
       useGraphStore.setState((s) => ({
         chatMessages: [...s.chatMessages, { role: 'assistant' as const, content: '' }],
@@ -344,120 +343,163 @@ function ExplorePanel() {
             return { chatMessages: msgs }
           })
         }
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setChatLoading(false)
-        saveCurrentChat()
-      }
+      } catch (err) { console.error(err) }
+      finally { setChatLoading(false); saveCurrentChat() }
     }
   }
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Stats bar */}
-      {nodeCount > 0 && (
-        <div className="px-3 py-2 border-b space-y-1.5 shrink-0">
-          {isStreaming && lastPhase && (
-            <div className="flex items-center gap-1.5">
-              <span className="animate-subtle-pulse text-[7px] text-primary">●</span>
-              <span className="text-[11px] font-medium text-primary">{lastPhase.text}</span>
+  const chatInput = (
+    <div className="flex items-end gap-1.5 rounded-md px-2 py-1.5"
+      style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
+      <textarea value={input} onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+        placeholder={isStreaming ? 'Agent 运行中...' : '调整图谱...'} disabled={isStreaming} rows={1}
+        className="flex-1 bg-transparent outline-none resize-none text-[11px] leading-relaxed disabled:opacity-40"
+        style={{ color: 'var(--text)', maxHeight: '60px' }} />
+      <button onClick={sendChat} disabled={!input.trim() || chatLoading || isStreaming}
+        className="shrink-0 w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold disabled:opacity-20 text-white"
+        style={{ background: 'var(--accent-blue)' }}>↑</button>
+    </div>
+  )
+
+  const chatMessageList = (ref: React.RefObject<HTMLDivElement | null>) => (
+    <>
+      {chatMessages.map((msg, i) => (
+        <div key={`msg-${i}`} className={`mb-2.5 ${msg.role === 'user' ? 'text-right' : ''}`}>
+          {msg.role === 'user' ? (
+            <div className="inline-block max-w-[90%] px-2.5 py-1.5 rounded-lg text-[11px] leading-relaxed whitespace-pre-wrap bg-primary text-primary-foreground">
+              {msg.content}
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-[10px] h-5">{nodeCount} 节点</Badge>
-            <Badge variant="secondary" className="text-[10px] h-5">{exploredCount} 探索</Badge>
-            <Badge variant="secondary" className="text-[10px] h-5">{docCount} 文档</Badge>
-          </div>
-          {isStreaming && nodeCount > 0 && (
-            <div className="w-full h-1 rounded-full overflow-hidden bg-secondary">
-              <div className="h-full rounded-full transition-all duration-700 bg-primary"
-                style={{ width: `${Math.min(100, (exploredCount / Math.max(nodeCount, 1)) * 100)}%` }} />
+          ) : (
+            <div className="chat-markdown text-[11px] leading-relaxed">
+              {msg.content ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+              ) : (
+                <span className="opacity-40">···</span>
+              )}
             </div>
           )}
         </div>
-      )}
+      ))}
+      {chatLoading && <div className="text-[11px] text-muted-foreground animate-subtle-pulse">思考中...</div>}
+      <div ref={ref} />
+    </>
+  )
 
-      {/* Messages + progress log */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-        {/* Chat history */}
-        {chatMessages.length === 0 && progressLog.length === 0 && !isStreaming && (
-          <p className="text-xs text-center py-6 text-muted-foreground">
-            {nodeCount === 0 ? '开始探索后显示进度' : '发消息继续调整图谱'}
-          </p>
-        )}
-        {chatMessages.map((msg, i) => (
-          <div key={`msg-${i}`} className={`mb-2.5 ${msg.role === 'user' ? 'text-right' : ''}`}>
-            {msg.role === 'user' ? (
-              <div className="inline-block max-w-[90%] px-2.5 py-1.5 rounded-lg text-[11px] leading-relaxed whitespace-pre-wrap bg-primary text-primary-foreground">
-                {msg.content}
-              </div>
-            ) : (
-              <div className="chat-markdown text-[11px] leading-relaxed">
-                {msg.content ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                ) : (
-                  <span className="opacity-40">···</span>
-                )}
+  return (
+    <>
+      <div className="flex flex-col h-full">
+        {/* Stats */}
+        {nodeCount > 0 && (
+          <div className="px-3 py-2 border-b space-y-1.5 shrink-0">
+            {isStreaming && lastPhase && (
+              <div className="flex items-center gap-1.5">
+                <span className="animate-subtle-pulse text-[7px] text-primary">●</span>
+                <span className="text-[11px] font-medium text-primary">{lastPhase.text}</span>
               </div>
             )}
-          </div>
-        ))}
-
-        {/* Progress entries (inline with chat) */}
-        {progressLog.length > 0 && (
-          <div className="mt-2 pt-2 border-t space-y-0.5">
-            {progressLog.slice(-20).map((entry, i) => (
-              <div key={`prog-${i}`} className={`text-[10px] mono flex items-start gap-1.5 ${
-                entry.type === 'status' || entry.type === 'phase' ? 'text-primary'
-                : entry.type === 'nodes' ? 'text-foreground'
-                : entry.type === 'turn' ? 'text-muted-foreground'
-                : 'text-chart-1'
-              }`}>
-                <span className="shrink-0 opacity-50">
-                  {entry.type === 'tool' ? '⚙' : entry.type === 'turn' ? '↩' : entry.type === 'phase' ? '▸' : entry.type === 'nodes' ? '+' : '✓'}
-                </span>
-                <span className={entry.type === 'phase' ? 'font-semibold' : ''}>{entry.text}</span>
-              </div>
-            ))}
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-[10px] h-5">{nodeCount} 节点</Badge>
+              <Badge variant="secondary" className="text-[10px] h-5">{exploredCount} 探索</Badge>
+              <Badge variant="secondary" className="text-[10px] h-5">{docCount} 文档</Badge>
+            </div>
             {isStreaming && (
-              <div className="flex items-center gap-1.5 text-[10px] mono mt-1 text-orange-500">
-                <span className="animate-spin-slow">◎</span><span>运行中...</span>
+              <div className="w-full h-1 rounded-full overflow-hidden bg-secondary">
+                <div className="h-full rounded-full transition-all duration-700 bg-primary"
+                  style={{ width: `${Math.min(100, (exploredCount / Math.max(nodeCount, 1)) * 100)}%` }} />
               </div>
             )}
           </div>
         )}
 
-        {chatLoading && (
-          <div className="mt-2 text-[11px] text-muted-foreground animate-subtle-pulse">思考中...</div>
+        {/* Progress log */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
+          {progressLog.length === 0 && !isStreaming && chatMessages.length === 0 && (
+            <p className="text-xs text-center py-6 text-muted-foreground">
+              {nodeCount === 0 ? '开始探索后显示进度' : '暂无进度'}
+            </p>
+          )}
+          {progressLog.map((entry, i) => (
+            <div key={i} className={`text-[10px] mono flex items-start gap-1.5 ${
+              entry.type === 'status' || entry.type === 'phase' ? 'text-primary'
+              : entry.type === 'nodes' ? 'text-foreground'
+              : entry.type === 'turn' ? 'text-muted-foreground'
+              : 'text-chart-1'
+            }`}>
+              <span className="shrink-0 opacity-50">
+                {entry.type === 'tool' ? '⚙' : entry.type === 'turn' ? '↩' : entry.type === 'phase' ? '▸' : entry.type === 'nodes' ? '+' : '✓'}
+              </span>
+              <span className={entry.type === 'phase' ? 'font-semibold' : ''}>{entry.text}</span>
+            </div>
+          ))}
+          {isStreaming && (
+            <div className="flex items-center gap-1.5 text-[10px] mono mt-1 text-orange-500">
+              <span className="animate-spin-slow">◎</span><span>运行中...</span>
+            </div>
+          )}
+
+          {/* Inline chat preview (last 2 messages) */}
+          {chatMessages.length > 0 && !isStreaming && (
+            <div className="mt-3 pt-2 border-t">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-medium text-muted-foreground">对话</span>
+                <button onClick={() => setChatPopup(true)}
+                  className="text-[10px] px-1.5 py-0.5 rounded transition-colors hover:bg-secondary"
+                  style={{ color: 'var(--accent-blue)' }}>
+                  展开 ↗
+                </button>
+              </div>
+              {chatMessages.slice(-2).map((msg, i) => (
+                <div key={i} className={`mb-1.5 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                  {msg.role === 'user' ? (
+                    <div className="inline-block max-w-[90%] px-2 py-1 rounded text-[10px] leading-relaxed whitespace-pre-wrap bg-primary text-primary-foreground truncate">
+                      {msg.content.slice(0, 60)}{msg.content.length > 60 ? '...' : ''}
+                    </div>
+                  ) : (
+                    <div className="chat-markdown text-[10px] leading-relaxed line-clamp-3">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content.slice(0, 200)}</ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Chat input */}
+        {activeGraphId && (
+          <div className="px-3 py-2 border-t shrink-0">
+            {chatInput}
+          </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      {activeGraphId && (
-        <div className="px-3 py-2 border-t shrink-0">
-          <div className="flex items-end gap-1.5 rounded-md px-2 py-1.5"
-            style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-              placeholder={isStreaming ? 'Agent 运行中...' : '调整图谱...'}
-              disabled={isStreaming}
-              rows={1}
-              className="flex-1 bg-transparent outline-none resize-none text-[11px] leading-relaxed disabled:opacity-40"
-              style={{ color: 'var(--text)', maxHeight: '60px' }}
-            />
-            <button onClick={sendChat} disabled={!input.trim() || chatLoading || isStreaming}
-              className="shrink-0 w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold disabled:opacity-20 text-white"
-              style={{ background: 'var(--accent-blue)' }}>
-              ↑
-            </button>
+      {/* ── Chat popup dialog ── */}
+      {chatPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
+          <div className="w-full max-w-lg h-[70vh] flex flex-col rounded-xl overflow-hidden animate-fade-in"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0" style={{ background: 'var(--bg)' }}>
+              <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>
+                对话历史
+                <span className="text-muted-foreground ml-1">({chatMessages.length} 条)</span>
+              </span>
+              <button onClick={() => setChatPopup(false)}
+                className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground text-xs">✕</button>
+            </div>
+            {/* Messages */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+              {chatMessageList(popupBottomRef)}
+            </div>
+            {/* Input */}
+            <div className="px-4 py-2.5 border-t shrink-0">
+              {chatInput}
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
