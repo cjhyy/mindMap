@@ -46,6 +46,7 @@ interface GraphStore {
 
   // Graphs
   graphs: GraphMeta[]
+  graphsLoaded: boolean
   activeGraphId: string | null
   activeGraph: GraphDetail | null
   activeNodeId: string | null
@@ -159,11 +160,12 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   graphs: [],
+  graphsLoaded: false,
   activeGraphId: null,
   activeGraph: null,
   activeNodeId: null,
   newNodeIds: new Set<string>(),
-  setGraphs: (graphs) => set({ graphs }),
+  setGraphs: (graphs) => set({ graphs, graphsLoaded: true }),
   setActiveGraph: (id, detail) => set((s) => {
     if (!detail) return { activeGraphId: id, activeGraph: null, newNodeIds: new Set() }
     const oldNodes = s.activeGraph?.graph_data?.nodes ?? {}

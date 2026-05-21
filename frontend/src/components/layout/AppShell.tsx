@@ -29,9 +29,12 @@ export function AppShell() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('outline')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  const graphsLoaded = useGraphStore((s) => s.graphsLoaded)
   useEffect(() => {
-    api.listGraphs().then(setGraphs).catch(console.error)
-  }, [setGraphs])
+    if (!graphsLoaded) {
+      api.listGraphs().then(setGraphs).catch(() => setGraphs([]))
+    }
+  }, [graphsLoaded, setGraphs])
 
   useEffect(() => {
     if (isStreaming) setSidebarTab('explore')
